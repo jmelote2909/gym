@@ -19,20 +19,77 @@ export default function SocialScreen() {
     if (activeTab === 'solicitudes') fetchRequests();
   }, [activeTab]);
 
+  useEffect(() => {
+    // Carga inicial para los contadores
+    fetchFriends();
+    fetchRequests();
+
+    // Suscribirse a cambios en tiempo real para actualizaciones instantáneas
+    const channel = supabase
+      .channel('custom-all-channel')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'amistades' },
+        (payload) => {
+          console.log('Cambio detectado en amistades:', payload);
+          fetchFriends();
+          fetchRequests();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
   async function searchUsers() {
     if (searchQuery.length < 2) return;
     setLoading(true);
     const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      setLoading(false);
+      return;
+    }
     
-    const { data, error } = await supabase
+    // 1. Buscar perfiles
+    const { data: profiles, error: pError } = await supabase
       .from('perfiles')
       .select('id, nombre_usuario, url_avatar')
       .ilike('nombre_usuario', `%${searchQuery}%`)
-      .neq('id', user?.id) // No buscarse a sí mismo
+      .neq('id', user.id) // No buscarse a sí mismo
       .limit(10);
 
-    if (error) Alert.alert('Error', error.message);
-    else setSearchResults(data || []);
+    if (pError) {
+      Alert.alert('Error', pError.message);
+      setLoading(false);
+      return;
+    }
+
+    if (!profiles || profiles.length === 0) {
+      setSearchResults([]);
+      setLoading(false);
+      return;
+    }
+
+    // 2. Buscar relaciones existentes para estos perfiles
+    const profileIds = profiles.map(p => p.id);
+    const { data: relations, error: rError } = await supabase
+      .from('amistades')
+      .select('*')
+      .filter('id_usuario', 'in', `(${user.id},${profileIds.join(',')})`)
+      .filter('id_amigo', 'in', `(${user.id},${profileIds.join(',')})`);
+
+    // Combinar datos
+    const results = profiles.map(profile => {
+      const relation = relations?.find(r => 
+        (r.id_usuario === user.id && r.id_amigo === profile.id) || 
+        (r.id_usuario === profile.id && r.id_amigo === user.id)
+      );
+      return { ...profile, relation };
+    });
+
+    setSearchResults(results);
     setLoading(false);
   }
 
@@ -45,43 +102,125 @@ export default function SocialScreen() {
     ]);
 
     if (error) Alert.alert('Error', 'Ya hay una relación pendiente o activa.');
-    else Alert.alert('Éxito', 'Solicitud enviada.');
+    else {
+      Alert.alert('Éxito', 'Solicitud enviada.');
+      // Actualizar localmente para mostrar el icono de enviado (?)
+      setSearchResults(current => current.map(item => 
+        item.id === friendId 
+          ? { ...item, relation: { id_usuario: user.id, id_amigo: friendId, estado: 'pendiente' } }
+          : item
+      ));
+    }
   }
 
   async function fetchFriends() {
     setLoading(true);
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+    if (!user) {
+      setLoading(false);
+      return;
+    }
 
-    const { data, error } = await supabase
+    // 1. Obtener amistades aceptadas
+    const { data: relations, error: rError } = await supabase
       .from('amistades')
-      .select(`
-        id,
-        estado,
-        perfiles!amistades_id_amigo_fkey (id, nombre_usuario),
-        sender:perfiles!amistades_id_usuario_fkey (id, nombre_usuario)
-      `)
+      .select('*')
       .eq('estado', 'aceptada')
       .or(`id_usuario.eq.${user.id},id_amigo.eq.${user.id}`);
 
-    if (error) Alert.alert('Error', error.message);
-    else setFriends(data || []);
+    if (rError) {
+      Alert.alert('Error', rError.message);
+      setLoading(false);
+      return;
+    }
+
+    if (!relations || relations.length === 0) {
+      setFriends([]);
+      setLoading(false);
+      return;
+    }
+
+    // 2. Extraer IDs de los amigos (el que NO soy yo)
+    const friendIds = relations.map(r => r.id_usuario === user.id ? r.id_amigo : r.id_usuario);
+
+    // 3. Obtener perfiles de esos amigos
+    const { data: profiles, error: pError } = await supabase
+      .from('perfiles')
+      .select('id, nombre_usuario')
+      .in('id', friendIds);
+
+    if (pError) {
+      Alert.alert('Error', pError.message);
+      setLoading(false);
+      return;
+    }
+
+    // 4. Combinar datos para el renderizado
+    const combined = relations.map(relation => {
+      const friendId = relation.id_usuario === user.id ? relation.id_amigo : relation.id_usuario;
+      const profile = profiles.find(p => p.id === friendId);
+      return {
+        ...relation,
+        displayUser: profile?.nombre_usuario || 'Usuario desconocido'
+      };
+    });
+
+    setFriends(combined);
     setLoading(false);
   }
 
   async function fetchRequests() {
     setLoading(true);
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+    if (!user) {
+      setLoading(false);
+      return;
+    }
 
-    const { data, error } = await supabase
+    // 1. Obtener solicitudes pendientes enviadas A MÍ
+    const { data: relations, error: rError } = await supabase
       .from('amistades')
-      .select('*, perfiles!amistades_id_usuario_fkey(nombre_usuario)')
+      .select('*')
       .eq('id_amigo', user.id)
       .eq('estado', 'pendiente');
 
-    if (error) Alert.alert('Error', error.message);
-    else setRequests(data || []);
+    if (rError) {
+      Alert.alert('Error', rError.message);
+      setLoading(false);
+      return;
+    }
+
+    if (!relations || relations.length === 0) {
+      setRequests([]);
+      setLoading(false);
+      return;
+    }
+
+    // 2. Extraer IDs de quién envía
+    const senderIds = relations.map(r => r.id_usuario);
+
+    // 3. Obtener perfiles de los que envían
+    const { data: profiles, error: pError } = await supabase
+      .from('perfiles')
+      .select('id, nombre_usuario')
+      .in('id', senderIds);
+
+    if (pError) {
+      Alert.alert('Error', pError.message);
+      setLoading(false);
+      return;
+    }
+
+    // 4. Combinar
+    const combined = relations.map(relation => {
+      const profile = profiles.find(p => p.id === relation.id_usuario);
+      return {
+        ...relation,
+        nombre_usuario: profile?.nombre_usuario || 'Alguien'
+      };
+    });
+
+    setRequests(combined);
     setLoading(false);
   }
 
@@ -119,7 +258,7 @@ export default function SocialScreen() {
         <Text style={styles.title}>Social</Text>
         <View style={styles.tabContainer}>
           {renderTabButton('buscar', 'BUSCAR')}
-          {renderTabButton('amigos', 'MIS AMIGOS')}
+          {renderTabButton('amigos', `MIS AMIGOS (${friends.length})`)}
           {renderTabButton('solicitudes', `SOLICITUDES (${requests.length})`)}
         </View>
       </LinearGradient>
@@ -146,9 +285,25 @@ export default function SocialScreen() {
                   <View style={styles.userCard}>
                     <View style={styles.avatarSmall}><Text style={styles.avatarLetter}>{item.nombre_usuario?.[0]}</Text></View>
                     <Text style={styles.userName}>{item.nombre_usuario}</Text>
-                    <TouchableOpacity style={styles.addButton} onPress={() => sendFriendRequest(item.id)}>
-                      <Ionicons name="person-add" size={20} color="#000" />
-                    </TouchableOpacity>
+                    {item.relation ? (
+                      item.relation.estado === 'pendiente' ? (
+                        <View style={[styles.addButton, { backgroundColor: '#444' }]}>
+                          <Ionicons 
+                            name={item.relation.id_usuario === item.id ? "person-add" : "help-circle"} 
+                            size={20} 
+                            color="#fff" 
+                          />
+                        </View>
+                      ) : (
+                        <View style={[styles.addButton, { backgroundColor: '#2e7d32' }]}>
+                          <Ionicons name="checkmark-circle" size={20} color="#fff" />
+                        </View>
+                      )
+                    ) : (
+                      <TouchableOpacity style={styles.addButton} onPress={() => sendFriendRequest(item.id)}>
+                        <Ionicons name="person-add" size={20} color="#000" />
+                      </TouchableOpacity>
+                    )}
                   </View>
                 )}
                 ListEmptyComponent={<Text style={styles.emptyText}>{searchQuery.length < 2 ? 'Escribe al menos 2 letras' : 'No se han encontrado usuarios'}</Text>}
@@ -162,8 +317,7 @@ export default function SocialScreen() {
             data={friends}
             keyExtractor={(item) => item.id}
             renderItem={({ item }) => {
-              // Decide whose name to show (the one that isn't me)
-              const displayUser = item.perfiles?.nombre_usuario || item.sender?.nombre_usuario;
+              const displayUser = item.displayUser;
               return (
                 <View style={styles.userCard}>
                    <View style={styles.avatarSmall}><Text style={styles.avatarLetter}>{displayUser?.[0]}</Text></View>
@@ -184,8 +338,8 @@ export default function SocialScreen() {
             keyExtractor={(item) => item.id}
             renderItem={({ item }) => (
               <View style={styles.userCard}>
-                 <View style={styles.avatarSmall}><Text style={styles.avatarLetter}>{item.perfiles?.nombre_usuario?.[0]}</Text></View>
-                 <Text style={styles.userName}>{item.perfiles?.nombre_usuario} te ha invitado</Text>
+                 <View style={styles.avatarSmall}><Text style={styles.avatarLetter}>{item.nombre_usuario?.[0]}</Text></View>
+                 <Text style={styles.userName}>{item.nombre_usuario} te ha invitado</Text>
                  <View style={styles.actionRow}>
                    <TouchableOpacity style={styles.acceptButton} onPress={() => handleRequest(item.id, true)}>
                       <Ionicons name="checkmark" size={20} color="#000" />
@@ -217,7 +371,7 @@ const styles = StyleSheet.create({
   searchIcon: { marginRight: 10 },
   searchInput: { flex: 1, height: 50, color: '#fff', fontSize: 16 },
   content: { flex: 1, padding: 20 },
-  userCard: { backgroundColor: '#1a1a1a', padding: 15, borderRadius: 15, flexDirection: 'row', alignItems: 'center', marginBottom: 12, borderHeight: 1, borderColor: '#262626', gap: 15 },
+  userCard: { backgroundColor: '#1a1a1a', padding: 15, borderRadius: 15, flexDirection: 'row', alignItems: 'center', marginBottom: 12, borderWidth: 1, borderColor: '#262626', gap: 15 },
   avatarSmall: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#333', alignItems: 'center', justifyContent: 'center' },
   avatarLetter: { color: '#fff', fontWeight: '800' },
   userName: { color: '#fff', fontSize: 16, fontWeight: '600', flex: 1 },

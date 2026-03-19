@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, TextInput, Modal, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, TextInput, Modal, ActivityIndicator, Alert, ScrollView } from 'react-native';
 import { supabase } from '@/src/lib/supabase';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -9,10 +9,30 @@ export default function ExercisesScreen() {
   const [loading, setLoading] = useState(true);
   const [modalVisible, setModalVisible] = useState(false);
   const [newExerciseName, setNewExerciseName] = useState('');
-  const [newExerciseMuscle, setNewExerciseMuscle] = useState('');
+  const [newExerciseWeight, setNewExerciseWeight] = useState('');
+  const [selectedDays, setSelectedDays] = useState<string[]>([]);
+  const [optionsModalVisible, setOptionsModalVisible] = useState(false);
+  const [selectedExercise, setSelectedExercise] = useState<any>(null);
+  const [isEditing, setIsEditing] = useState(false);
+
+  const DAYS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
 
   useEffect(() => {
     fetchExercises();
+    
+    // Suscribirse a cambios en tiempo real para ejercicios
+    const channel = supabase
+      .channel('exercises-realtime')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'ejercicios' },
+        () => fetchExercises()
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   async function fetchExercises() {
@@ -28,28 +48,86 @@ export default function ExercisesScreen() {
   }
 
   async function addExercise() {
-    if (!newExerciseName) return;
+    if (!newExerciseName || selectedDays.length === 0) {
+      Alert.alert('Incompleto', 'Por favor, añade un nombre y al menos un día.');
+      return;
+    }
 
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    const { error } = await supabase.from('ejercicios').insert([
-      { 
-        nombre: newExerciseName, 
-        musculo_objetivo: newExerciseMuscle,
-        id_usuario: user.id 
-      }
-    ]);
+    if (isEditing && selectedExercise) {
+      const { error } = await supabase
+        .from('ejercicios')
+        .update({
+          nombre: newExerciseName,
+          peso: parseFloat(newExerciseWeight) || 0,
+          dias_semana: selectedDays,
+        })
+        .eq('id', selectedExercise.id);
 
-    if (error) {
-      Alert.alert('Error', error.message);
+      if (error) Alert.alert('Error', error.message);
+      else closeModal();
     } else {
-      setNewExerciseName('');
-      setNewExerciseMuscle('');
-      setModalVisible(false);
-      fetchExercises();
+      const { error } = await supabase.from('ejercicios').insert([
+        { 
+          nombre: newExerciseName, 
+          peso: parseFloat(newExerciseWeight) || 0,
+          dias_semana: selectedDays,
+          id_usuario: user.id 
+        }
+      ]);
+
+      if (error) Alert.alert('Error', error.message);
+      else closeModal();
     }
   }
+
+  function closeModal() {
+    setNewExerciseName('');
+    setNewExerciseWeight('');
+    setSelectedDays([]);
+    setModalVisible(false);
+    setIsEditing(false);
+    setSelectedExercise(null);
+    fetchExercises();
+  }
+
+  async function deleteExercise() {
+    if (!selectedExercise) return;
+    
+    Alert.alert('Eliminar', '¿Estás seguro de que quieres borrar este ejercicio?', [
+      { text: 'Cancelar', style: 'cancel' },
+      { text: 'Eliminar', style: 'destructive', onPress: async () => {
+          const { error } = await supabase.from('ejercicios').delete().eq('id', selectedExercise.id);
+          if (error) Alert.alert('Error', error.message);
+          setOptionsModalVisible(false);
+          fetchExercises();
+      }}
+    ]);
+  }
+
+  function openEdit() {
+    setNewExerciseName(selectedExercise.nombre);
+    setNewExerciseWeight(selectedExercise.peso?.toString() || '');
+    setSelectedDays(selectedExercise.dias_semana || []);
+    setIsEditing(true);
+    setOptionsModalVisible(false);
+    setModalVisible(true);
+  }
+
+  const toggleDay = (day: string) => {
+    setSelectedDays(current => 
+      current.includes(day) 
+        ? current.filter(d => d !== day) 
+        : [...current, day]
+    );
+  };
+
+  const exercisesByDay = DAYS.map(day => ({
+    day,
+    data: exercises.filter(ex => ex.dias_semana?.includes(day))
+  })).filter(section => section.data.length > 0);
 
   return (
     <View style={styles.container}>
@@ -61,25 +139,29 @@ export default function ExercisesScreen() {
       {loading ? (
         <ActivityIndicator size="large" color="#E8FB4B" style={{ flex: 1 }} />
       ) : (
-        <FlatList
-          data={exercises}
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.listContent}
-          renderItem={({ item }) => (
-            <View style={styles.exerciseCard}>
-              <View>
-                <Text style={styles.exerciseName}>{item.nombre}</Text>
-                <Text style={styles.exerciseMuscle}>{item.musculo_objetivo || 'Cuerpo completo'}</Text>
-              </View>
-              <TouchableOpacity>
-                <Ionicons name="ellipsis-vertical" size={20} color="#666" />
-              </TouchableOpacity>
-            </View>
-          )}
-          ListEmptyComponent={
-            <Text style={styles.emptyText}>No tienes ejercicios creados todavía.</Text>
-          }
-        />
+        <ScrollView contentContainerStyle={styles.listContent}>
+           {exercisesByDay.length > 0 ? exercisesByDay.map((section) => (
+             <View key={section.day} style={styles.daySection}>
+                <Text style={styles.dayTitle}>{section.day}</Text>
+                {section.data.map((item) => (
+                  <View key={`${section.day}-${item.id}`} style={styles.exerciseCard}>
+                    <View>
+                      <Text style={styles.exerciseName}>{item.nombre}</Text>
+                      <Text style={styles.exerciseMuscle}>{item.peso || 0} KG</Text>
+                    </View>
+                    <TouchableOpacity onPress={() => {
+                        setSelectedExercise(item);
+                        setOptionsModalVisible(true);
+                    }}>
+                      <Ionicons name="ellipsis-vertical" size={20} color="#666" />
+                    </TouchableOpacity>
+                  </View>
+                ))}
+             </View>
+           )) : (
+             <Text style={styles.emptyText}>No tienes ejercicios creados todavía.</Text>
+           )}
+        </ScrollView>
       )}
 
       {/* Floating Action Button */}
@@ -99,7 +181,7 @@ export default function ExercisesScreen() {
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Nuevo Ejercicio</Text>
+            <Text style={styles.modalTitle}>{isEditing ? 'Editar Ejercicio' : 'Nuevo Ejercicio'}</Text>
             
             <TextInput
               style={styles.input}
@@ -111,11 +193,27 @@ export default function ExercisesScreen() {
             
             <TextInput
               style={styles.input}
-              placeholder="Músculo (ej. Hombros)"
+              placeholder="Peso (Kg)"
               placeholderTextColor="#666"
-              value={newExerciseMuscle}
-              onChangeText={setNewExerciseMuscle}
+              keyboardType="numeric"
+              value={newExerciseWeight}
+              onChangeText={setNewExerciseWeight}
             />
+
+            <Text style={styles.daySelectorTitle}>Días de la semana:</Text>
+            <View style={styles.daySelector}>
+              {DAYS.map(day => (
+                <TouchableOpacity 
+                  key={day}
+                  style={[styles.dayBubble, selectedDays.includes(day) && styles.dayBubbleSelected]}
+                  onPress={() => toggleDay(day)}
+                >
+                  <Text style={[styles.dayBubbleText, selectedDays.includes(day) && styles.dayBubbleTextSelected]}>
+                    {day.substring(0, 1)}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
 
             <View style={styles.modalButtons}>
               <TouchableOpacity 
@@ -134,6 +232,34 @@ export default function ExercisesScreen() {
             </View>
           </View>
         </View>
+      </Modal>
+
+      {/* Options Modal */}
+      <Modal
+        animationType="fade"
+        transparent={true}
+        visible={optionsModalVisible}
+        onRequestClose={() => setOptionsModalVisible(false)}
+      >
+        <TouchableOpacity 
+          style={styles.modalOverlay} 
+          activeOpacity={1} 
+          onPress={() => setOptionsModalVisible(false)}
+        >
+          <View style={styles.optionsContent}>
+            <Text style={styles.optionsTitle}>{selectedExercise?.nombre}</Text>
+            
+            <TouchableOpacity style={styles.optionItem} onPress={openEdit}>
+              <Ionicons name="create-outline" size={22} color="#fff" />
+              <Text style={styles.optionText}>Editar Ejercicio</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={[styles.optionItem, { borderBottomWidth: 0 }]} onPress={deleteExercise}>
+              <Ionicons name="trash-outline" size={22} color="#ff4444" />
+              <Text style={[styles.optionText, { color: '#ff4444' }]}>Eliminar Ejercicio</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
       </Modal>
     </View>
   );
@@ -259,5 +385,79 @@ const styles = StyleSheet.create({
   saveButtonText: {
     color: '#000',
     fontWeight: '700',
+  },
+  daySection: {
+    marginBottom: 25,
+  },
+  dayTitle: {
+    color: '#E8FB4B',
+    fontSize: 20,
+    fontWeight: '800',
+    marginBottom: 15,
+    textTransform: 'uppercase',
+    letterSpacing: 2,
+  },
+  daySelectorTitle: {
+    color: '#888',
+    fontSize: 14,
+    marginBottom: 10,
+    marginLeft: 5,
+  },
+  daySelector: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 25,
+  },
+  dayBubble: {
+    width: 35,
+    height: 35,
+    borderRadius: 17.5,
+    backgroundColor: '#262626',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#333',
+  },
+  dayBubbleSelected: {
+    backgroundColor: '#E8FB4B',
+    borderColor: '#E8FB4B',
+  },
+  dayBubbleText: {
+    color: '#888',
+    fontWeight: '800',
+    fontSize: 12,
+  },
+  dayBubbleTextSelected: {
+    color: '#000',
+  },
+  optionsContent: {
+    backgroundColor: '#1a1a1a',
+    borderRadius: 20,
+    width: '80%',
+    padding: 20,
+    borderWidth: 1,
+    borderColor: '#333',
+    alignSelf: 'center',
+  },
+  optionsTitle: {
+    color: '#888',
+    fontSize: 14,
+    marginBottom: 20,
+    textAlign: 'center',
+    fontWeight: '600',
+    textTransform: 'uppercase',
+  },
+  optionItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: '#262626',
+    gap: 15,
+  },
+  optionText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
   },
 });

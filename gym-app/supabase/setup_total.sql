@@ -16,6 +16,8 @@ CREATE TABLE IF NOT EXISTS public.ejercicios (
   id_usuario UUID REFERENCES auth.users ON DELETE CASCADE NOT NULL,
   nombre TEXT NOT NULL,
   musculo_objetivo TEXT,
+  dias_semana TEXT[] DEFAULT '{}',
+  peso FLOAT DEFAULT 0,
   creado_el TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
 );
 
@@ -40,8 +42,8 @@ CREATE TABLE IF NOT EXISTS public.series_entrenamiento (
 -- 5. TABLA DE AMISTADES
 CREATE TABLE IF NOT EXISTS public.amistades (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  id_usuario UUID REFERENCES auth.users NOT NULL,
-  id_amigo UUID REFERENCES auth.users NOT NULL,
+  id_usuario UUID REFERENCES public.perfiles(id) NOT NULL,
+  id_amigo UUID REFERENCES public.perfiles(id) NOT NULL,
   estado TEXT CHECK (estado IN ('pendiente', 'aceptada', 'bloqueada')) DEFAULT 'pendiente',
   creado_el TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()),
   UNIQUE(id_usuario, id_amigo)
@@ -81,6 +83,27 @@ CREATE POLICY "Series propias" ON series_entrenamiento FOR ALL USING (
   )
 );
 
+-- Políticas de Amistades
+DROP POLICY IF EXISTS "Usuarios ven sus propias amistades" ON amistades;
+CREATE POLICY "Usuarios ven sus propias amistades" ON amistades FOR SELECT USING (
+  auth.uid() = id_usuario OR auth.uid() = id_amigo
+);
+
+DROP POLICY IF EXISTS "Usuarios envían solicitudes" ON amistades;
+CREATE POLICY "Usuarios envían solicitudes" ON amistades FOR INSERT WITH CHECK (
+  auth.uid() = id_usuario
+);
+
+DROP POLICY IF EXISTS "Usuarios aceptan/borran sus amistades" ON amistades;
+CREATE POLICY "Usuarios aceptan/borran sus amistades" ON amistades FOR UPDATE USING (
+  auth.uid() = id_amigo
+);
+
+DROP POLICY IF EXISTS "Usuarios eliminan sus amistades" ON amistades;
+CREATE POLICY "Usuarios eliminan sus amistades" ON amistades FOR DELETE USING (
+  auth.uid() = id_usuario OR auth.uid() = id_amigo
+);
+
 -- ==========================================
 -- AUTOMATIZACIÓN (TRIGGERS)
 -- ==========================================
@@ -111,3 +134,22 @@ ON CONFLICT (id) DO NOTHING;
 
 -- Forzar recarga de caché
 NOTIFY pgrst, 'reload_schema';
+
+-- ==========================================
+-- CORRECCIÓN DE RELACIONES (SI HAY ERRORES)
+-- ==========================================
+-- Ejecuta esto si ves errores de "Schema Cache" o "Could not find relationship":
+-- ALTER TABLE public.amistades DROP CONSTRAINT IF EXISTS amistades_id_usuario_fkey;
+-- ALTER TABLE public.amistades DROP CONSTRAINT IF EXISTS amistades_id_amigo_fkey;
+-- ALTER TABLE public.amistades ADD CONSTRAINT amistades_id_usuario_fkey FOREIGN KEY (id_usuario) REFERENCES public.perfiles(id);
+-- ALTER TABLE public.amistades ADD CONSTRAINT amistades_id_amigo_fkey FOREIGN KEY (id_amigo) REFERENCES public.perfiles(id);
+
+-- ==========================================
+-- CONFIGURACIÓN DE TIEMPO REAL
+-- ==========================================
+-- Ejecuta esto para activar las actualizaciones en vivo en la app:
+-- ALTER PUBLICATION supabase_realtime ADD TABLE amistades;
+-- ALTER PUBLICATION supabase_realtime ADD TABLE perfiles;
+-- ALTER PUBLICATION supabase_realtime ADD TABLE entrenamientos;
+-- ALTER PUBLICATION supabase_realtime ADD TABLE series_entrenamiento;
+-- ALTER PUBLICATION supabase_realtime ADD TABLE ejercicios;
