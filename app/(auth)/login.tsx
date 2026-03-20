@@ -9,6 +9,8 @@ export default function LoginScreen() {
   const [nickname, setNickname] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [peso, setPeso] = useState('');
+  const [estatura, setEstatura] = useState('');
   const [loading, setLoading] = useState(false);
   const [isRegistering, setIsRegistering] = useState(false);
 
@@ -20,32 +22,51 @@ export default function LoginScreen() {
         setLoading(false);
         return;
       }
+      const parsedPeso = parseFloat(peso);
+      const parsedEstatura = parseFloat(estatura);
+
       const { data, error } = await supabase.auth.signUp({
-        email,
+        email: email.trim(),
         password,
         options: {
           data: {
             nombre_usuario: nickname,
+            peso: isNaN(parsedPeso) ? null : parsedPeso,
+            estatura: isNaN(parsedEstatura) ? null : parsedEstatura,
           }
         }
       });
       if (error) {
-        Alert.alert('Error', error.message);
+        console.error('Signup error:', error);
+        if (error.status === 400 && error.message.includes('already registered')) {
+          Alert.alert('Error', 'Este correo ya está registrado. Intenta iniciar sesión.');
+        } else {
+          Alert.alert('Error al registrarse', error.message);
+        }
         setLoading(false);
       } else {
-        // Explicitly navigate if the layout listener is slow
+        Alert.alert('¡Éxito!', 'Cuenta creada. Por favor, revisa tu correo para confirmar (si es necesario).');
         router.replace('/(tabs)');
       }
     } else {
+      if (!email || !password) {
+        Alert.alert('Error', 'Por favor, ingresa tu correo y contraseña');
+        setLoading(false);
+        return;
+      }
       const { error } = await supabase.auth.signInWithPassword({
-        email,
+        email: email.trim(),
         password,
       });
       if (error) {
-        Alert.alert('Error', error.message);
+        console.error('Login error:', error);
+        if (error.status === 400 && error.message.includes('Invalid login credentials')) {
+          Alert.alert('Error de acceso', 'Correo o contraseña incorrectos. Por favor, verifica tus datos.');
+        } else {
+          Alert.alert('Error', error.message);
+        }
         setLoading(false);
       } else {
-        // Explicitly navigate on success
         router.push('/(tabs)' as any);
       }
     }
@@ -69,14 +90,34 @@ export default function LoginScreen() {
 
         <View style={styles.inputGroup}>
           {isRegistering && (
-            <TextInput
-              style={styles.input}
-              placeholder="Nombre de usuario (Nickname)"
-              placeholderTextColor="#666"
-              value={nickname}
-              onChangeText={setNickname}
-              autoCapitalize="none"
-            />
+            <>
+              <TextInput
+                style={styles.input}
+                placeholder="Nombre de usuario (Nickname)"
+                placeholderTextColor="#666"
+                value={nickname}
+                onChangeText={setNickname}
+                autoCapitalize="none"
+              />
+              <View style={styles.row}>
+                <TextInput
+                  style={[styles.input, { flex: 1, marginRight: 10 }]}
+                  placeholder="Peso (kg)"
+                  placeholderTextColor="#666"
+                  value={peso}
+                  onChangeText={setPeso}
+                  keyboardType="numeric"
+                />
+                <TextInput
+                  style={[styles.input, { flex: 1 }]}
+                  placeholder="Estatura (cm)"
+                  placeholderTextColor="#666"
+                  value={estatura}
+                  onChangeText={setEstatura}
+                  keyboardType="numeric"
+                />
+              </View>
+            </>
           )}
           <TextInput
             style={styles.input}
@@ -85,6 +126,8 @@ export default function LoginScreen() {
             value={email}
             onChangeText={setEmail}
             autoCapitalize="none"
+            keyboardType="email-address"
+            autoCorrect={false}
           />
           <TextInput
             style={styles.input}
@@ -161,16 +204,17 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#333',
   },
+  row: {
+    flexDirection: 'row',
+    marginBottom: 0,
+  },
   button: {
     backgroundColor: '#E8FB4B', // Vibrant lime green for premium look
     borderRadius: 12,
     padding: 18,
     alignItems: 'center',
     marginTop: 10,
-    shadowColor: '#E8FB4B',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
+    boxShadow: '0px 4px 8px rgba(232, 251, 75, 0.3)',
     elevation: 5,
   },
   buttonText: {

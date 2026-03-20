@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Modal, FlatList, Alert, ActivityIndicator } from 'react-native';
 import { supabase } from '@/src/lib/supabase';
 import { Ionicons } from '@expo/vector-icons';
+import { calculateStreakAndLives } from '@/src/lib/streakLogic';
+import { format } from 'date-fns';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 
@@ -12,6 +14,7 @@ interface Set {
 }
 
 interface ExerciseLog {
+  logId: string;
   exerciseId: string;
   name: string;
   sets: Set[];
@@ -35,6 +38,7 @@ export default function ActiveWorkoutScreen() {
 
   function addExerciseToWorkout(exercise: any) {
     const newLog: ExerciseLog = {
+      logId: Math.random().toString(),
       exerciseId: exercise.id,
       name: exercise.nombre,
       sets: [{ id: Math.random().toString(), weight: '', reps: '' }]
@@ -104,8 +108,73 @@ export default function ActiveWorkoutScreen() {
 
     if (sError) {
       Alert.alert('Error al guardar series', sError.message);
-    } else {
-      Alert.alert('¡Entrenamiento guardado!', 'Buen trabajo, guerrero.');
+      setLoading(false);
+      return;
+    }
+
+    // 3. Update exercise records (if weight is higher) and user profile (streak)
+    try {
+      // Get current exercises to compare weights
+      const { data: currentExercises } = await supabase
+        .from('ejercicios')
+        .select('id, peso');
+
+      const weightUpdates = exerciseLogs.map(log => {
+        const maxWeight = Math.max(...log.sets.map(s => parseFloat(s.weight) || 0));
+        const existingEx = currentExercises?.find(e => e.id === log.exerciseId);
+        if (existingEx && maxWeight > (existingEx.peso || 0)) {
+          return supabase.from('ejercicios').update({ peso: maxWeight }).eq('id', log.exerciseId);
+        }
+        return null;
+      }).filter(Boolean);
+
+      if (weightUpdates.length > 0) {
+        await Promise.all(weightUpdates);
+      }
+
+      // Update Profile: racha and ultima_fecha_entreno using unified logic
+      const { data: profile } = await supabase
+        .from('perfiles')
+        .select('*')
+        .eq('id', user.id)
+        .single();
+
+      if (profile) {
+        // First, check for missed days and sync lives/streak
+        const sync = calculateStreakAndLives(
+          profile.ultima_fecha_entreno,
+          profile.racha,
+          profile.vidas,
+          profile.siguiente_vida_en,
+          profile.dias_vida_gastada || []
+        );
+
+        // Now, add today's workout to the streak
+        const today = format(new Date(), 'yyyy-MM-dd');
+        let finalizedStreak = sync.streak;
+        
+        // If it's a new day and wasn't trained yet
+        if (profile.ultima_fecha_entreno !== today) {
+           finalizedStreak += 1;
+        }
+
+        await supabase
+          .from('perfiles')
+          .update({ 
+            ultima_fecha_entreno: today,
+            racha: finalizedStreak,
+            vidas: sync.lives,
+            siguiente_vida_en: sync.nextLifeAt,
+            dias_vida_gastada: sync.missedDaysWithLife
+          })
+          .eq('id', user.id);
+      }
+
+      Alert.alert('¡Entrenamiento guardado!', 'Buen trabajo, guerrero. Tu racha y récords han sido actualizados.');
+      router.replace('/(tabs)');
+    } catch (err) {
+      console.error(err);
+      Alert.alert('¡Entrenamiento guardado!', 'Se guardó el entreno, pero hubo un error al actualizar récords.');
       router.replace('/(tabs)');
     }
     setLoading(false);
@@ -127,7 +196,7 @@ export default function ActiveWorkoutScreen() {
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
         {exerciseLogs.map((log, exIdx) => (
-          <View key={log.exerciseId} style={styles.exerciseCard}>
+          <View key={log.logId} style={styles.exerciseCard}>
             <Text style={styles.exerciseName}>{log.name}</Text>
             
             <View style={styles.setRowHeader}>

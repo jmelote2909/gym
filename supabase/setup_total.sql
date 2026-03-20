@@ -7,6 +7,13 @@ CREATE TABLE IF NOT EXISTS public.perfiles (
   id UUID REFERENCES auth.users ON DELETE CASCADE PRIMARY KEY,
   nombre_usuario TEXT UNIQUE,
   url_avatar TEXT,
+  racha INTEGER DEFAULT 0,
+  ultima_fecha_entreno DATE,
+  peso FLOAT DEFAULT 0,
+  estatura FLOAT DEFAULT 0,
+  vidas INTEGER DEFAULT 3,
+  siguiente_vida_en TIMESTAMP WITH TIME ZONE,
+  dias_vida_gastada DATE[] DEFAULT '{}',
   actualizado_el TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
 );
 
@@ -112,10 +119,12 @@ CREATE POLICY "Usuarios eliminan sus amistades" ON amistades FOR DELETE USING (
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS trigger AS $$
 BEGIN
-  INSERT INTO public.perfiles (id, nombre_usuario)
+  INSERT INTO public.perfiles (id, nombre_usuario, peso, estatura)
   VALUES (
     new.id, 
-    COALESCE(new.raw_user_meta_data->>'nombre_usuario', split_part(new.email, '@', 1))
+    COALESCE(new.raw_user_meta_data->>'nombre_usuario', split_part(new.email, '@', 1)),
+    (new.raw_user_meta_data->>'peso')::FLOAT,
+    (new.raw_user_meta_data->>'estatura')::FLOAT
   );
   RETURN new;
 END;

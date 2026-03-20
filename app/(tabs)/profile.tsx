@@ -7,6 +7,9 @@ import { LinearGradient } from 'expo-linear-gradient';
 export default function ProfileScreen() {
   const [email, setEmail] = useState('');
   const [nickname, setNickname] = useState('');
+  const [initialNickname, setInitialNickname] = useState('');
+  const [peso, setPeso] = useState('');
+  const [estatura, setEstatura] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
@@ -21,10 +24,15 @@ export default function ProfileScreen() {
       setEmail(user.email || '');
       const { data: profile } = await supabase
         .from('perfiles')
-        .select('nombre_usuario')
+        .select('nombre_usuario, peso, estatura')
         .eq('id', user.id)
         .single();
-      if (profile) setNickname(profile.nombre_usuario || '');
+      if (profile) {
+        setNickname(profile.nombre_usuario || '');
+        setInitialNickname(profile.nombre_usuario || '');
+        setPeso(profile.peso ? profile.peso.toString() : '');
+        setEstatura(profile.estatura ? profile.estatura.toString() : '');
+      }
     }
   }
 
@@ -47,19 +55,36 @@ export default function ProfileScreen() {
       }
     }
 
-    // 2. Update Nickname in 'perfiles' table
+    // 2. Update Nickname, Weight, Height in 'perfiles' table
+    const updateData: any = {
+      peso: parseFloat(peso) || null,
+      estatura: parseFloat(estatura) || null
+    };
+    
+    // Only update nickname if it changed to avoid unique constraint false positives
+    if (nickname !== initialNickname) {
+      updateData.nombre_usuario = nickname;
+    }
+
     const { error: pError } = await supabase
       .from('perfiles')
-      .update({ nombre_usuario: nickname })
+      .update(updateData)
       .eq('id', user.id);
 
     if (pError) {
-      Alert.alert('Error Perfil', 'El nombre de usuario ya está en uso o es inválido.');
-    } else {
-      Alert.alert('Éxito', 'Perfil actualizado correctamente.');
-      setIsEditing(false);
-      setNewPassword('');
+      if (pError.code === '23505') {
+        Alert.alert('Error', 'Este nombre de usuario ya está en uso. Por favor, elige otro.');
+      } else {
+        Alert.alert('Error al actualizar', pError.message);
+      }
+      setLoading(false);
+      return;
     }
+
+    Alert.alert('Éxito', 'Perfil actualizado correctamente');
+    setInitialNickname(nickname);
+    setIsEditing(false);
+    setNewPassword('');
     setLoading(false);
   }
 
@@ -104,7 +129,6 @@ export default function ProfileScreen() {
               autoCapitalize="none"
             />
 
-            <Text style={styles.label}>NUEVA CONTRASEÑA (Opcional)</Text>
             <TextInput
               style={styles.input}
               value={newPassword}
@@ -113,6 +137,31 @@ export default function ProfileScreen() {
               placeholderTextColor="#666"
               secureTextEntry
             />
+
+            <View style={styles.row}>
+              <View style={{ flex: 1, marginRight: 10 }}>
+                <Text style={styles.label}>PESO (kg)</Text>
+                <TextInput
+                  style={styles.input}
+                  value={peso}
+                  onChangeText={setPeso}
+                  placeholder="0.0"
+                  placeholderTextColor="#666"
+                  keyboardType="numeric"
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.label}>ESTATURA (cm)</Text>
+                <TextInput
+                  style={styles.input}
+                  value={estatura}
+                  onChangeText={setEstatura}
+                  placeholder="0"
+                  placeholderTextColor="#666"
+                  keyboardType="numeric"
+                />
+              </View>
+            </View>
 
             <View style={styles.buttonGroup}>
                <TouchableOpacity style={styles.cancelButton} onPress={() => setIsEditing(false)}>
@@ -236,6 +285,9 @@ const styles = StyleSheet.create({
     fontSize: 16,
     borderWidth: 1,
     borderColor: '#333',
+  },
+  row: {
+    flexDirection: 'row',
   },
   buttonGroup: {
     flexDirection: 'row',

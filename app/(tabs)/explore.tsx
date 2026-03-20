@@ -328,10 +328,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     elevation: 8,
-    shadowColor: '#E8FB4B',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4,
-    shadowRadius: 10,
+    boxShadow: '0px 4px 10px rgba(232, 251, 75, 0.4)',
   },
   modalOverlay: {
     flex: 1,
