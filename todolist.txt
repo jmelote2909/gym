@@ -1,0 +1,17 @@
+futuro proximo:
+- funcion de admin
+- mensajes de alerta del admin
+- notificaciones generales
+- recordatorios de antiguo peso
+- avatar
+- ajustes de la aplicacion (idioma, tema, etc)
+- ver perfil de otros usuarios (solo si es amigo)
+
+futuro lejano:
+- notificaciones
+- chat
+- correos de recuperacion de contraseña
+- funcion como de red social (publicaciones, comentarios, me gusta, etc)
+
+para actualizar la app en el celular:
+npx eas-cli update --branch preview --message "Ahora sí"

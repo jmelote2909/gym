@@ -1,19 +1,19 @@
-import React, { useEffect, useState, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, SafeAreaView, Dimensions, Alert } from 'react-native';
-import { useRouter, useFocusEffect } from 'expo-router';
-import { LinearGradient } from 'expo-linear-gradient';
+import { calculateStreakAndLives } from '@/src/lib/streakLogic';
 import { supabase } from '@/src/lib/supabase';
 import { Ionicons } from '@expo/vector-icons';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { calculateStreakAndLives } from '@/src/lib/streakLogic';
-import Animated, { 
-  useSharedValue, 
-  useAnimatedStyle, 
-  withRepeat, 
-  withSequence, 
-  withTiming,
-  withDelay
+import { LinearGradient } from 'expo-linear-gradient';
+import { useFocusEffect, useRouter } from 'expo-router';
+import React, { useCallback, useEffect, useState } from 'react';
+import { Dimensions, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View, Modal } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withRepeat,
+  withSequence,
+  withTiming
 } from 'react-native-reanimated';
 
 const AnimatedFire = () => {
@@ -56,18 +56,30 @@ const AnimatedFire = () => {
 const { width } = Dimensions.get('window');
 
 export default function Dashboard() {
-  const [userName, setUserName] = useState('Guerrero');
+  const [userName, setUserName] = useState('user');
   const [streak, setStreak] = useState(0);
   const [lives, setLives] = useState(3);
   const [weight, setWeight] = useState('--');
   const [height, setHeight] = useState('--');
   const [hasTrainedToday, setHasTrainedToday] = useState(false);
+  const [esAdmin, setEsAdmin] = useState(false);
   const [friendActivities, setFriendActivities] = useState<any[]>([]);
+  const [hasNewAlert, setHasNewAlert] = useState(false);
+  const [currentBannerMessage, setCurrentBannerMessage] = useState<string | null>(null);
+
+  const bannerOpacity = useSharedValue(0);
+  const bannerTranslateY = useSharedValue(-100);
+
+  const bannerStyle = useAnimatedStyle(() => ({
+    opacity: bannerOpacity.value,
+    transform: [{ translateY: bannerTranslateY.value }],
+  }));
 
   useFocusEffect(
     useCallback(() => {
       let isMounted = true;
       let channel: any = null;
+      let alertChannel: any = null;
 
       async function getProfileAndActivity() {
         const { data: { user } } = await supabase.auth.getUser();
@@ -78,9 +90,9 @@ export default function Dashboard() {
             .select('*')
             .eq('id', user.id)
             .single();
-          
+
           if (!error && data) {
-             const sync = calculateStreakAndLives(
+            const sync = calculateStreakAndLives(
               data.ultima_fecha_entreno,
               data.racha,
               data.vidas,
@@ -88,26 +100,27 @@ export default function Dashboard() {
               data.dias_vida_gastada || []
             );
 
-            setUserName(data.nombre_usuario || user.email?.split('@')[0] || 'Guerrero');
+            setUserName(data.nombre_usuario || user.email?.split('@')[0] || 'user');
             setStreak(sync.streak);
             setLives(sync.lives);
             setWeight(data.peso ? `${data.peso}kg` : '--');
             setHeight(data.estatura ? `${data.estatura}cm` : '--');
             setHasTrainedToday(sync.todayTrained);
+            setEsAdmin(!!data.es_admin);
 
             if (sync.streak !== data.racha || sync.lives !== data.vidas) {
-               await supabase.from('perfiles').update({
-                 racha: sync.streak,
-                 vidas: sync.lives,
-                 siguiente_vida_en: sync.nextLifeAt,
-                 dias_vida_gastada: sync.missedDaysWithLife
-               }).eq('id', user.id);
+              await supabase.from('perfiles').update({
+                racha: sync.streak,
+                vidas: sync.lives,
+                siguiente_vida_en: sync.nextLifeAt,
+                dias_vida_gastada: sync.missedDaysWithLife
+              }).eq('id', user.id);
             }
           }
 
           // 2. Fetch Friend Activity
           await fetchFriendActivity(user.id);
-          
+
           // 3. Setup Realtime Subscription
           channel = supabase
             .channel('friend-activity')
@@ -131,11 +144,57 @@ export default function Dashboard() {
               }
             )
             .subscribe();
+
+          // 4. Setup Alert Subscription
+          alertChannel = supabase
+            .channel('global-alerts')
+            .on(
+              'postgres_changes',
+              { event: 'INSERT', schema: 'public', table: 'alertas_globales' },
+              (payload: any) => {
+                if (isMounted) {
+                  setHasNewAlert(true);
+                  setCurrentBannerMessage(payload.new.mensaje);
+                  bannerTranslateY.value = withTiming(0, { duration: 500 });
+                  bannerOpacity.value = withTiming(1, { duration: 500 });
+
+                  setTimeout(() => {
+                    bannerTranslateY.value = withTiming(-100, { duration: 500 });
+                    bannerOpacity.value = withTiming(0, { duration: 500 });
+                  }, 5000);
+                }
+              }
+            )
+            .subscribe();
+
+          // 5. Check for unread alerts
+          const { data: latestAlert } = await supabase
+            .from('alertas_globales')
+            .select('id, mensaje')
+            .order('creado_el', { ascending: false })
+            .limit(1)
+            .single();
+
+          if (latestAlert && isMounted) {
+            const lastSeenId = await AsyncStorage.getItem('lastSeenAlertId');
+            if (lastSeenId !== latestAlert.id.toString()) {
+              setHasNewAlert(true);
+              
+              // Also show banner if it's new (user just opened app and hasn't seen it)
+              setCurrentBannerMessage(latestAlert.mensaje);
+              bannerTranslateY.value = withTiming(0, { duration: 500 });
+              bannerOpacity.value = withTiming(1, { duration: 500 });
+
+              setTimeout(() => {
+                bannerTranslateY.value = withTiming(-100, { duration: 500 });
+                bannerOpacity.value = withTiming(0, { duration: 500 });
+              }, 5000);
+            }
+          }
         }
       }
 
       async function fetchFriendActivity(userId: string) {
-        // Find all accepted friends
         const { data: friendsData } = await supabase
           .from('amistades')
           .select('id_usuario, id_amigo')
@@ -146,7 +205,6 @@ export default function Dashboard() {
           const friendIds = friendsData.map(f => f.id_usuario === userId ? f.id_amigo : f.id_usuario);
           const todayStr = format(new Date(), 'yyyy-MM-dd');
 
-          // Get profiles of friends who trained today
           const { data: profiles } = await supabase
             .from('perfiles')
             .select('id, nombre_usuario, racha, ultima_fecha_entreno')
@@ -166,9 +224,32 @@ export default function Dashboard() {
       return () => {
         isMounted = false;
         if (channel) supabase.removeChannel(channel);
+        if (alertChannel) supabase.removeChannel(alertChannel);
       };
     }, [])
   );
+
+  const closeBanner = () => {
+    bannerTranslateY.value = withTiming(-100, { duration: 500 });
+    bannerOpacity.value = withTiming(0, { duration: 500 });
+  };
+
+  async function openAlert() {
+    // Mark latest as seen
+    const { data } = await supabase
+      .from('alertas_globales')
+      .select('id')
+      .order('creado_el', { ascending: false })
+      .limit(1)
+      .single();
+
+    if (data) {
+      await AsyncStorage.setItem('lastSeenAlertId', data.id.toString());
+    }
+
+    setHasNewAlert(false);
+    router.push('/notifications' as any);
+  }
 
   const formattedDate = format(new Date(), "EEEE, d 'de' MMMM", { locale: es });
   const capitalizedDate = formattedDate.charAt(0).toUpperCase() + formattedDate.slice(1);
@@ -177,17 +258,52 @@ export default function Dashboard() {
 
   return (
     <SafeAreaView style={styles.container}>
+      {/* Floating Banner */}
+      <Animated.View style={[styles.bannerContainer, bannerStyle]}>
+        <LinearGradient 
+          colors={['rgba(38, 38, 38, 0.95)', 'rgba(0, 0, 0, 0.95)']} 
+          style={styles.bannerGradient}
+        >
+          <Ionicons name="megaphone" size={20} color="#E8FB4B" />
+          <View style={styles.bannerTextContainer}>
+            <Text style={styles.bannerTitle}>Nueva Alerta</Text>
+            <Text style={styles.bannerMessage} numberOfLines={2}>{currentBannerMessage}</Text>
+          </View>
+          <TouchableOpacity onPress={closeBanner} style={styles.bannerCloseButton}>
+            <Ionicons name="close" size={20} color="#666" />
+          </TouchableOpacity>
+        </LinearGradient>
+      </Animated.View>
+
       <ScrollView contentContainerStyle={styles.scrollContent}>
-        
+
         {/* Header */}
         <View style={styles.header}>
           <View>
             <Text style={styles.greeting}>Hola,</Text>
             <Text style={styles.name}>{userName} 🔥</Text>
           </View>
-          <TouchableOpacity style={styles.profileButton}>
-             <Ionicons name="person-circle-outline" size={40} color="#E8FB4B" />
-          </TouchableOpacity>
+          <View style={styles.headerActions}>
+            <TouchableOpacity 
+              style={[styles.profileButton, { marginRight: 10 }]} 
+              onPress={openAlert}
+            >
+              <Ionicons name="notifications-outline" size={28} color={hasNewAlert ? "#E8FB4B" : "#fff"} />
+              {hasNewAlert && <View style={styles.redDot} />}
+            </TouchableOpacity>
+
+            {esAdmin && (
+              <TouchableOpacity 
+                style={[styles.profileButton, { marginRight: 10, borderColor: '#E8FB4B', borderWidth: 1 }]} 
+                onPress={() => router.push('/(admin)/admin' as any)}
+              >
+                <Ionicons name="shield-checkmark" size={24} color="#E8FB4B" />
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity style={styles.profileButton} onPress={() => router.push('/(tabs)/profile' as any)}>
+              <Ionicons name="person-circle-outline" size={32} color="#fff" />
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* Stats Summary */}
@@ -206,26 +322,26 @@ export default function Dashboard() {
         {/* Action Button */}
         <View style={styles.actionSection}>
           <Text style={styles.dateLabel}>{capitalizedDate}</Text>
-          <TouchableOpacity 
-            style={[styles.mainButton, hasTrainedToday && styles.disabledButton]} 
+          <TouchableOpacity
+            style={[styles.mainButton, hasTrainedToday && styles.disabledButton]}
             onPress={() => !hasTrainedToday && router.push('/workout/active')}
             disabled={hasTrainedToday}
           >
-             <LinearGradient 
-               colors={hasTrainedToday ? ['#333', '#222'] : ['#E8FB4B', '#C9D93B']} 
-               start={{x:0, y:0}} 
-               end={{x:1, y:0}}
-               style={styles.gradientButton}
-             >
-               <Ionicons 
-                 name={hasTrainedToday ? "checkmark-circle" : "add-circle"} 
-                 size={24} 
-                 color={hasTrainedToday ? "#666" : "#000"} 
-               />
-               <Text style={[styles.buttonText, hasTrainedToday && styles.disabledButtonText]}>
-                 {hasTrainedToday ? 'HOY YA HAS ENTRENADO' : 'REGISTRAR ENTRENAMIENTO DE HOY'}
-               </Text>
-             </LinearGradient>
+            <LinearGradient
+              colors={hasTrainedToday ? ['#333', '#222'] : ['#E8FB4B', '#C9D93B']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.gradientButton}
+            >
+              <Ionicons
+                name={hasTrainedToday ? "checkmark-circle" : "add-circle"}
+                size={24}
+                color={hasTrainedToday ? "#666" : "#000"}
+              />
+              <Text style={[styles.buttonText, hasTrainedToday && styles.disabledButtonText]}>
+                {hasTrainedToday ? 'HOY YA HAS ENTRENADO' : 'REGISTRAR ENTRENAMIENTO DE HOY'}
+              </Text>
+            </LinearGradient>
           </TouchableOpacity>
         </View>
 
@@ -288,8 +404,27 @@ const styles = StyleSheet.create({
     fontSize: 28,
     fontWeight: '800',
   },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
   profileButton: {
     padding: 5,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'transparent',
+    position: 'relative',
+  },
+  redDot: {
+    position: 'absolute',
+    top: 5,
+    right: 5,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: '#FF3B30',
+    borderWidth: 2,
+    borderColor: '#000',
   },
   statsContainer: {
     flexDirection: 'row',
@@ -403,5 +538,46 @@ const styles = StyleSheet.create({
     color: '#666',
     fontSize: 12,
     marginTop: 4,
+  },
+  bannerContainer: {
+    position: 'absolute',
+    top: 60,
+    left: 20,
+    right: 20,
+    zIndex: 9999,
+  },
+  bannerGradient: {
+    padding: 15,
+    borderRadius: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(232, 251, 75, 0.2)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.5,
+    shadowRadius: 15,
+    elevation: 10,
+  },
+  bannerTextContainer: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  bannerTitle: {
+    color: '#E8FB4B',
+    fontSize: 12,
+    fontWeight: '900',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
+  bannerMessage: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+    marginTop: 2,
+  },
+  bannerCloseButton: {
+    padding: 5,
+    marginLeft: 10,
   },
 });

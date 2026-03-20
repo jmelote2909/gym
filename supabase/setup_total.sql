@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS public.perfiles (
   vidas INTEGER DEFAULT 3,
   siguiente_vida_en TIMESTAMP WITH TIME ZONE,
   dias_vida_gastada DATE[] DEFAULT '{}',
+  es_admin BOOLEAN DEFAULT false,
   actualizado_el TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
 );
 
@@ -56,6 +57,14 @@ CREATE TABLE IF NOT EXISTS public.amistades (
   UNIQUE(id_usuario, id_amigo)
 );
 
+-- 6. TABLA DE ALERTAS GLOBALES
+CREATE TABLE IF NOT EXISTS public.alertas_globales (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  mensaje TEXT NOT NULL,
+  id_autor UUID REFERENCES public.perfiles(id),
+  creado_el TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
+);
+
 -- ==========================================
 -- CONFIGURACIÓN DE SEGURIDAD (RLS)
 -- ==========================================
@@ -65,12 +74,21 @@ ALTER TABLE ejercicios ENABLE ROW LEVEL SECURITY;
 ALTER TABLE entrenamientos ENABLE ROW LEVEL SECURITY;
 ALTER TABLE series_entrenamiento ENABLE ROW LEVEL SECURITY;
 ALTER TABLE amistades ENABLE ROW LEVEL SECURITY;
+ALTER TABLE alertas_globales ENABLE ROW LEVEL SECURITY;
 
 -- Políticas de Perfiles
 DROP POLICY IF EXISTS "Perfiles visibles para todos" ON perfiles;
 CREATE POLICY "Perfiles visibles para todos" ON perfiles FOR SELECT USING (true);
 DROP POLICY IF EXISTS "Usuarios actualizan su propio perfil" ON perfiles;
 CREATE POLICY "Usuarios actualizan su propio perfil" ON perfiles FOR UPDATE USING (auth.uid() = id);
+
+-- Políticas de Alertas
+DROP POLICY IF EXISTS "Alertas visibles para todos" ON alertas_globales;
+CREATE POLICY "Alertas visibles para todos" ON alertas_globales FOR SELECT USING (true);
+DROP POLICY IF EXISTS "Solo admins crean alertas" ON alertas_globales;
+CREATE POLICY "Solo admins crean alertas" ON alertas_globales FOR INSERT WITH CHECK (
+  EXISTS (SELECT 1 FROM perfiles WHERE id = auth.uid() AND es_admin = true)
+);
 
 -- Políticas de Ejercicios
 DROP POLICY IF EXISTS "Ejercicios propios" ON ejercicios;
@@ -162,3 +180,4 @@ NOTIFY pgrst, 'reload_schema';
 -- ALTER PUBLICATION supabase_realtime ADD TABLE entrenamientos;
 -- ALTER PUBLICATION supabase_realtime ADD TABLE series_entrenamiento;
 -- ALTER PUBLICATION supabase_realtime ADD TABLE ejercicios;
+-- ALTER PUBLICATION supabase_realtime ADD TABLE alertas_globales;

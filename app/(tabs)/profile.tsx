@@ -129,6 +129,7 @@ export default function ProfileScreen() {
               autoCapitalize="none"
             />
 
+            <Text style={styles.label}>CAMBIAR CONTRASEÑA</Text>
             <TextInput
               style={styles.input}
               value={newPassword}
