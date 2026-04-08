@@ -27,6 +27,8 @@ export default function ActiveWorkoutScreen() {
   const [availableExercises, setAvailableExercises] = useState<any[]>([]);
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [exerciseSearchQuery, setExerciseSearchQuery] = useState('');
+  const [filteredExercises, setFilteredExercises] = useState<any[]>([]);
   const { t, colors } = useSettings();
 
   useEffect(() => {
@@ -34,9 +36,18 @@ export default function ActiveWorkoutScreen() {
   }, []);
 
   async function fetchExercises() {
-    const { data } = await supabase.from('ejercicios').select('*').order('nombre');
+    const { data } = await supabase.from('catalogo_ejercicios').select('*').order('nombre');
     setAvailableExercises(data || []);
+    setFilteredExercises(data || []);
   }
+
+  useEffect(() => {
+    const filtered = availableExercises.filter(ex => 
+      ex.nombre.toLowerCase().includes(exerciseSearchQuery.toLowerCase()) ||
+      (ex.musculo_principal && ex.musculo_principal.toLowerCase().includes(exerciseSearchQuery.toLowerCase()))
+    );
+    setFilteredExercises(filtered);
+  }, [exerciseSearchQuery, availableExercises]);
 
   function addExerciseToWorkout(exercise: any) {
     const newLog: ExerciseLog = {
@@ -254,16 +265,27 @@ export default function ActiveWorkoutScreen() {
                 <Ionicons name="close" size={24} color={colors.text} />
               </TouchableOpacity>
             </View>
+            <View style={[styles.modalSearchBox, { backgroundColor: colors.background, borderColor: colors.border }]}>
+               <Ionicons name="search" size={20} color={colors.muted} />
+               <TextInput
+                 style={[styles.modalSearchInput, { color: colors.text }]}
+                 placeholder={t('search_exercises')}
+                 placeholderTextColor={colors.muted}
+                 value={exerciseSearchQuery}
+                 onChangeText={setExerciseSearchQuery}
+               />
+            </View>
+
             <FlatList
-              data={availableExercises}
+              data={filteredExercises}
               keyExtractor={(item) => item.id}
               renderItem={({ item }) => (
                 <TouchableOpacity style={[styles.exerciseSelectItem, { borderBottomColor: colors.border }]} onPress={() => addExerciseToWorkout(item)}>
                   <Text style={[styles.exerciseSelectName, { color: colors.text }]}>{item.nombre}</Text>
-                  <Text style={[styles.exerciseSelectMuscle, { color: colors.secondary }]}>{item.musculo_objetivo}</Text>
+                  <Text style={[styles.exerciseSelectMuscle, { color: colors.secondary }]}>{t(item.musculo_principal)}</Text>
                 </TouchableOpacity>
               )}
-              ListEmptyComponent={<Text style={[styles.emptyText, { color: colors.muted }]}>{t('no_exercises_created')}</Text>}
+              ListEmptyComponent={<Text style={[styles.emptyText, { color: colors.muted }]}>{t('no_results_found')}</Text>}
             />
           </View>
         </View>
@@ -426,5 +448,20 @@ const styles = StyleSheet.create({
     color: '#666',
     textAlign: 'center',
     marginTop: 50,
+  },
+  modalSearchBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 15,
+    borderRadius: 12,
+    borderWidth: 1,
+    height: 45,
+    marginBottom: 20,
+    gap: 10,
+  },
+  modalSearchInput: {
+    flex: 1,
+    fontSize: 16,
+    fontWeight: '600',
   }
 });
