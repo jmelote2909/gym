@@ -35,6 +35,13 @@ export default function AchievementsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [selectedAchievement, setSelectedAchievement] = useState<Achievement | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
+  const [userStats, setUserStats] = useState({
+    racha: 0,
+    total_entrenamientos: 0,
+    volumen_total: 0,
+    total_amigos: 0,
+    primer_record: 0,
+  });
 
   const categories = [
     { key: 'todos', label: 'Todos', icon: 'grid' },
@@ -57,7 +64,40 @@ export default function AchievementsScreen() {
       return;
     }
 
-    // Obtener todos los logros
+    // Sync achievements based on current stats before fetching
+    try {
+      await supabase.rpc('verificar_logros_usuario', { usuario_id: user.id });
+    } catch (_) {} // Non-blocking
+
+    // --- Obtener estadísticas reales del usuario ---
+    const [perfilRes, workoutsRes, amigosRes, recordsRes] = await Promise.all([
+      supabase.from('perfiles').select('racha').eq('id', user.id).single(),
+      supabase.from('entrenamientos').select('id').eq('id_usuario', user.id),
+      supabase.from('amistades').select('id').eq('estado', 'aceptada')
+        .or(`id_usuario.eq.${user.id},id_amigo.eq.${user.id}`),
+      supabase.from('ejercicios').select('id').eq('id_usuario', user.id),
+    ]);
+
+    const workoutIds = workoutsRes.data?.map(w => w.id) || [];
+    let volumenTotal = 0;
+    if (workoutIds.length > 0) {
+      const { data: seriesData } = await supabase
+        .from('series_entrenamiento')
+        .select('peso, repeticiones')
+        .in('id_entrenamiento', workoutIds);
+      volumenTotal = (seriesData || []).reduce((acc, s) => acc + (s.peso * s.repeticiones), 0);
+    }
+
+    const stats = {
+      racha: perfilRes.data?.racha || 0,
+      total_entrenamientos: workoutIds.length,
+      volumen_total: volumenTotal,
+      total_amigos: amigosRes.data?.length || 0,
+      primer_record: recordsRes.data?.length || 0,
+    };
+    setUserStats(stats);
+
+    // --- Obtener todos los logros ---
     const { data: allAchievements } = await supabase
       .from('logros')
       .select('*')
@@ -142,34 +182,60 @@ export default function AchievementsScreen() {
 
   const renderAchievement = (achievement: Achievement, index: number) => {
     const isLocked = !achievement.unlocked;
-    
+
+    // Calculate real progress percentage for each category
+    let currentValue = 0;
+    switch (achievement.categoria) {
+      case 'racha':     currentValue = userStats.racha; break;
+      case 'volumen':   currentValue = userStats.volumen_total; break;
+      case 'ejercicio':
+        if (achievement.codigo === 'pr_first' || achievement.codigo === 'first_workout') {
+          currentValue = achievement.codigo === 'first_workout'
+            ? userStats.total_entrenamientos
+            : userStats.primer_record;
+        } else {
+          currentValue = userStats.total_entrenamientos;
+        }
+        break;
+      case 'social':    currentValue = userStats.total_amigos; break;
+    }
+    const progressPct = achievement.requisito_valor > 0
+      ? Math.min(100, Math.round((currentValue / achievement.requisito_valor) * 100))
+      : 0;
+
+    // Format current value label
+    let currentLabel = currentValue.toString();
+    if (achievement.categoria === 'volumen' && currentValue >= 1000) {
+      currentLabel = `${(currentValue / 1000).toFixed(1)}t`;
+    } else if (achievement.categoria === 'volumen') {
+      currentLabel = `${Math.round(currentValue)}kg`;
+    }
+
     return (
-      <Animated.View 
+      <Animated.View
         key={achievement.id}
         entering={FadeInDown.delay(index * 50).springify()}
       >
         <TouchableOpacity activeOpacity={0.9} onPress={() => openModal(achievement)}>
           <View style={[
             styles.achievementCard,
-            { 
-              backgroundColor: colors.card, 
+            {
+              backgroundColor: colors.card,
               borderColor: achievement.unlocked ? colors.primary : colors.border,
               opacity: isLocked ? 0.85 : 1
             }
           ]}>
             <View style={[
               styles.iconContainer,
-              { 
-                backgroundColor: achievement.unlocked ? colors.primary : colors.muted,
-              }
+              { backgroundColor: achievement.unlocked ? colors.primary : colors.muted }
             ]}>
-              <Ionicons 
-                name={achievement.icono as any} 
-                size={32} 
-                color={achievement.unlocked ? colors.background : colors.secondary} 
+              <Ionicons
+                name={achievement.icono as any}
+                size={32}
+                color={achievement.unlocked ? colors.background : colors.secondary}
               />
             </View>
-            
+
             <View style={styles.achievementInfo}>
               <View style={styles.achievementHeader}>
                 <Text style={[styles.achievementName, { color: colors.text }]}>
@@ -189,15 +255,20 @@ export default function AchievementsScreen() {
               )}
               {!achievement.unlocked && (
                 <>
-                  <View style={styles.progressContainer}>
+                  <View style={[styles.progressContainer, { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }]}>
                     <Text style={[styles.progressText, { color: colors.muted }]}>
-                      Objetivo: {achievement.requisito_valor}
+                      {currentLabel} / {achievement.categoria === 'volumen'
+                        ? achievement.requisito_valor >= 1000
+                          ? `${achievement.requisito_valor / 1000}t`
+                          : `${achievement.requisito_valor}kg`
+                        : achievement.requisito_valor}
+                    </Text>
+                    <Text style={[styles.progressText, { color: colors.primary, fontWeight: '800' }]}>
+                      {progressPct}%
                     </Text>
                   </View>
-
-                  {/* ProgressBar placeholder: si más adelante guardas progreso real, pásalo como percentage */}
-                  <View style={{ marginTop: 8 }}>
-                    <ProgressBar percentage={0} height={8} backgroundColor={colors.border} fillColor={colors.primary} />
+                  <View style={{ marginTop: 6 }}>
+                    <ProgressBar percentage={progressPct} height={8} backgroundColor={colors.border} fillColor={colors.primary} />
                   </View>
                 </>
               )}

@@ -39,7 +39,7 @@ CREATE TABLE IF NOT EXISTS public.rutinas (
 CREATE TABLE IF NOT EXISTS public.rutinas_ejercicios (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   id_rutina UUID REFERENCES public.rutinas ON DELETE CASCADE NOT NULL,
-  id_ejercicio_catalogo UUID REFERENCES public.catalogo_ejercicios ON DELETE CASCADE NOT NULL,
+  id_ejercicio_catalogo TEXT NOT NULL,
   orden INTEGER NOT NULL DEFAULT 0,
   series_sugeridas INTEGER DEFAULT 3,
   repeticiones_sugeridas INTEGER DEFAULT 10,

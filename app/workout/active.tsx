@@ -220,6 +220,11 @@ export default function ActiveWorkoutScreen() {
         } catch (_) {} // Non-blocking
       }
 
+      // 6. Check and unlock achievements
+      try {
+        await supabase.rpc('verificar_logros_usuario', { usuario_id: user.id });
+      } catch (_) {} // Non-blocking, don't fail the workout if this fails
+
       setLoading(false);
       Alert.alert(t('success'), t('workout_saved_subtitle'), [
         { text: 'OK', onPress: () => router.replace('/(tabs)') }
