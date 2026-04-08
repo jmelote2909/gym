@@ -79,8 +79,8 @@ export default function CalendarScreen() {
       .from('entrenamientos')
       .select('*')
       .eq('id_usuario', user.id)
-      .gte('fecha', firstDay.toISOString())
-      .lte('fecha', lastDay.toISOString());
+      .gte('creado_el', firstDay.toISOString())
+      .lte('creado_el', lastDay.toISOString());
 
     if (error) {
         console.error('Error fetching workouts:', error);
@@ -91,7 +91,7 @@ export default function CalendarScreen() {
   }
 
   function filterWorkoutsForSelectedDate() {
-    const filtered = workouts.filter(w => isSameDay(new Date(w.fecha), selectedDate));
+    const filtered = workouts.filter(w => isSameDay(new Date(w.creado_el), selectedDate));
     setDayWorkouts(filtered);
   }
 
@@ -151,7 +151,7 @@ export default function CalendarScreen() {
   const renderDay = (day: Date | null, index: number) => {
     if (!day) return <View key={`empty-${index}`} style={styles.dayContainer} />;
 
-    const hasWorkout = workouts.some(w => isSameDay(new Date(w.fecha), day));
+    const hasWorkout = workouts.some(w => isSameDay(new Date(w.creado_el), day));
     const isSelected = isSameDay(day, selectedDate);
     const isCurrentToday = isToday(day);
     const dateStr = format(day, 'yyyy-MM-dd');
@@ -268,7 +268,7 @@ export default function CalendarScreen() {
                 <View style={styles.workoutInfo}>
                   <Text style={[styles.workoutName, { color: colors.text }]}>{workout.nombre}</Text>
                   <Text style={[styles.workoutTime, { color: colors.secondary }]}>
-                    {format(new Date(workout.fecha), 'HH:mm')}
+                    {format(new Date(workout.creado_el), 'HH:mm')}
                   </Text>
                 </View>
                 <Ionicons name="chevron-forward" size={20} color={colors.muted} />
@@ -291,7 +291,7 @@ export default function CalendarScreen() {
               <View>
                 <Text style={[styles.summaryTitle, { color: colors.text }]}>{selectedWorkout?.nombre}</Text>
                 <Text style={[styles.summarySubtitle, { color: colors.primary }]}>
-                  {selectedWorkout && format(new Date(selectedWorkout.fecha), "d 'de' MMMM, HH:mm", { locale: dateLocale })}
+                  {selectedWorkout && format(new Date(selectedWorkout.creado_el), "d 'de' MMMM, HH:mm", { locale: dateLocale })}
                 </Text>
               </View>
               <TouchableOpacity onPress={() => setIsSummaryVisible(false)} style={[styles.closeButton, { backgroundColor: colors.muted }]}>
