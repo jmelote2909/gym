@@ -14,17 +14,30 @@ export default function ExercisesScreen() {
   const [selectedMuscle, setSelectedMuscle] = useState<string | null>(null);
   const [catalogExercises, setCatalogExercises] = useState<any[]>([]);
   const [loadingCatalog, setLoadingCatalog] = useState(true);
+  const [muscles, setMuscles] = useState<string[]>(['Todos']);
   const { t, colors } = useSettings();
-
-  const MUSCLES = [
-    'Todos', 'Abdominales', 'Bíceps', 'Pecho', 'Piernas', 'Espalda', 'Hombros', 'Tríceps', 'Glúteos', 'Isquios', 'Gemelos', 'Antebrazos'
-  ];
 
   const DAY_NAMES_ES = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
 
   useEffect(() => {
+    fetchMuscles();
     fetchInitialCatalog();
   }, []);
+
+  async function fetchMuscles() {
+    const { data, error } = await supabase
+      .from('catalogo_ejercicios')
+      .select('musculo_principal');
+
+    if (!error && data) {
+      const uniqueMuscles = Array.from(new Set(data.map(item => item.musculo_principal)))
+        .filter(Boolean)
+        .sort()
+        .map(m => m.charAt(0).toUpperCase() + m.slice(1).toLowerCase());
+      
+      setMuscles(['Todos', ...uniqueMuscles]);
+    }
+  }
 
   async function fetchInitialCatalog() {
     setLoadingCatalog(true);
@@ -143,7 +156,7 @@ export default function ExercisesScreen() {
           showsHorizontalScrollIndicator={false} 
           contentContainerStyle={styles.muscleContainer}
         >
-          {MUSCLES.map(muscle => (
+          {muscles.map(muscle => (
             <TouchableOpacity 
               key={muscle} 
               onPress={() => handleMuscleSelect(muscle)}
