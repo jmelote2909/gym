@@ -16,3 +16,4 @@ futuro lejano:
 
 para actualizar la app en el celular:
 npx eas-cli update --branch preview --message "Ahora sí"
+https://expo.dev/artifacts/eas/6HC1AdjitddZ9fak93bNqE.apk
