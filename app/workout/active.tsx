@@ -139,24 +139,35 @@ export default function ActiveWorkoutScreen() {
       return;
     }
 
+    // 3. Update records (records reside in the 'ejercicios' personal table)
     try {
-      const { data: currentExercises } = await supabase
+      const { data: currentRecords } = await supabase
         .from('ejercicios')
-        .select('id, peso');
+        .select('nombre, peso')
+        .eq('id_usuario', user.id);
 
-      const weightUpdates = exerciseLogs.map(log => {
+      const recordUpdates = exerciseLogs.map(async (log) => {
         const maxWeight = Math.max(...log.sets.map(s => parseFloat(s.weight) || 0));
-        const existingEx = currentExercises?.find(e => e.id === log.exerciseId);
-        if (existingEx && maxWeight > (existingEx.peso || 0)) {
-          return supabase.from('ejercicios').update({ peso: maxWeight }).eq('id', log.exerciseId);
+        const existingRecord = currentRecords?.find(r => r.nombre === log.name);
+
+        if (!existingRecord) {
+          // New exercise for the user, create record
+          return supabase.from('ejercicios').insert([{
+            id_usuario: user.id,
+            nombre: log.name,
+            peso: maxWeight,
+            musculo_objetivo: availableExercises.find(ex => ex.id === log.exerciseId)?.musculo_principal || ''
+          }]);
+        } else if (maxWeight > (existingRecord.peso || 0)) {
+          // Update existing record with new personal best
+          return supabase.from('ejercicios').update({ peso: maxWeight }).eq('id_usuario', user.id).eq('nombre', log.name);
         }
         return null;
-      }).filter(Boolean);
+      });
 
-      if (weightUpdates.length > 0) {
-        await Promise.all(weightUpdates);
-      }
+      await Promise.all(recordUpdates.filter(u => u !== null));
 
+      // 4. Update Profile: racha and last trained date
       const { data: profile } = await supabase
         .from('perfiles')
         .select('*')
@@ -179,20 +190,19 @@ export default function ActiveWorkoutScreen() {
            finalizedStreak += 1;
         }
 
-        await supabase
-          .from('perfiles')
-          .update({ 
-            ultima_fecha_entreno: today,
-            racha: finalizedStreak,
-            vidas: sync.lives,
-            siguiente_vida_en: sync.nextLifeAt,
-            dias_vida_gastada: sync.missedDaysWithLife
-          })
-          .eq('id', user.id);
+        await supabase.from('perfiles').update({
+          ultima_fecha_entreno: today,
+          racha: finalizedStreak,
+          vidas: sync.lives,
+          siguiente_vida_en: sync.nextLifeAt,
+          dias_vida_gastada: sync.missedDaysWithLife
+        }).eq('id', user.id);
       }
 
-      Alert.alert(t('workout_saved'), t('workout_saved_subtitle'));
-      router.replace('/(tabs)');
+      setLoading(false);
+      Alert.alert(t('success'), t('workout_saved_subtitle'), [
+        { text: 'OK', onPress: () => router.replace('/(tabs)') }
+      ]);
     } catch (err) {
       console.error(err);
       Alert.alert(t('workout_saved'), t('workout_saved_error'));
