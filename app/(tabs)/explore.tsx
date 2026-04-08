@@ -17,7 +17,7 @@ export default function ExercisesScreen() {
   const { t, colors } = useSettings();
 
   const MUSCLES = [
-    'Abdominales', 'Bíceps', 'Pecho', 'Piernas', 'Espalda', 'Hombros', 'Tríceps', 'Glúteos', 'Isquios', 'Gemelos', 'Antebrazos'
+    'Todos', 'Abdominales', 'Bíceps', 'Pecho', 'Piernas', 'Espalda', 'Hombros', 'Tríceps', 'Glúteos', 'Isquios', 'Gemelos', 'Antebrazos'
   ];
 
   const DAY_NAMES_ES = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
@@ -61,7 +61,7 @@ export default function ExercisesScreen() {
   }
 
   function handleMuscleSelect(muscle: string) {
-    const newMuscle = selectedMuscle === muscle ? null : muscle;
+    const newMuscle = (muscle === 'Todos' || selectedMuscle === muscle) ? null : muscle;
     setSelectedMuscle(newMuscle);
     searchExercises(searchQuery, newMuscle);
   }
@@ -150,13 +150,13 @@ export default function ExercisesScreen() {
               style={[
                 styles.muscleChip, 
                 { backgroundColor: colors.background, borderColor: colors.border },
-                selectedMuscle === muscle && { backgroundColor: colors.primary, borderColor: colors.primary }
+                (selectedMuscle === muscle || (muscle === 'Todos' && selectedMuscle === null)) && { backgroundColor: colors.primary, borderColor: colors.primary }
               ]}
             >
               <Text style={[
                 styles.muscleChipText, 
                 { color: colors.secondary },
-                selectedMuscle === muscle && { color: colors.background }
+                (selectedMuscle === muscle || (muscle === 'Todos' && selectedMuscle === null)) && { color: colors.background }
               ]}>
                 {muscle}
               </Text>
