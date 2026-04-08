@@ -15,9 +15,10 @@ interface Set {
 }
 
 interface ExerciseLog {
-  logId: string;
+  id: string;
   exerciseId: string;
   name: string;
+  previousWeight?: number;
   sets: Set[];
 }
 
@@ -29,6 +30,8 @@ export default function ActiveWorkoutScreen() {
   const [loading, setLoading] = useState(false);
   const [exerciseSearchQuery, setExerciseSearchQuery] = useState('');
   const [filteredExercises, setFilteredExercises] = useState<any[]>([]);
+  const [muscles, setMuscles] = useState<string[]>(['Todos']);
+  const [selectedMuscle, setSelectedMuscle] = useState('Todos');
   const { t, colors } = useSettings();
 
   useEffect(() => {
@@ -37,27 +40,52 @@ export default function ActiveWorkoutScreen() {
 
   async function fetchExercises() {
     const { data } = await supabase.from('catalogo_ejercicios').select('*').order('nombre');
-    setAvailableExercises(data || []);
-    setFilteredExercises(data || []);
+    if (data) {
+      setAvailableExercises(data);
+      setFilteredExercises(data);
+      
+      const uniqueMuscles = Array.from(new Set(data.map(item => item.musculo_principal)))
+        .filter(Boolean)
+        .sort()
+        .map(m => m.charAt(0).toUpperCase() + m.slice(1).toLowerCase());
+      setMuscles(['Todos', ...uniqueMuscles]);
+    }
   }
 
   useEffect(() => {
-    const filtered = availableExercises.filter(ex => 
-      ex.nombre.toLowerCase().includes(exerciseSearchQuery.toLowerCase()) ||
-      (ex.musculo_principal && ex.musculo_principal.toLowerCase().includes(exerciseSearchQuery.toLowerCase()))
-    );
+    const filtered = availableExercises.filter(ex => {
+      const matchesSearch = ex.nombre.toLowerCase().includes(exerciseSearchQuery.toLowerCase()) ||
+                          (ex.musculo_principal && ex.musculo_principal.toLowerCase().includes(exerciseSearchQuery.toLowerCase()));
+      const matchesMuscle = selectedMuscle === 'Todos' || 
+                           (ex.musculo_principal && ex.musculo_principal.toLowerCase() === selectedMuscle.toLowerCase());
+      return matchesSearch && matchesMuscle;
+    });
     setFilteredExercises(filtered);
-  }, [exerciseSearchQuery, availableExercises]);
+  }, [exerciseSearchQuery, availableExercises, selectedMuscle]);
 
-  function addExerciseToWorkout(exercise: any) {
+  async function addExerciseToWorkout(exercise: any) {
+    const { data: userEx } = await supabase
+      .from('ejercicios')
+      .select('peso')
+      .eq('nombre', exercise.nombre)
+      .limit(1)
+      .single();
+
     const newLog: ExerciseLog = {
-      logId: Math.random().toString(),
+      id: Math.random().toString(36).substr(2, 9),
       exerciseId: exercise.id,
       name: exercise.nombre,
+      previousWeight: userEx?.peso || 0,
       sets: [{ id: Math.random().toString(), weight: '', reps: '' }]
     };
     setExerciseLogs([...exerciseLogs, newLog]);
     setIsModalVisible(false);
+    setExerciseSearchQuery('');
+    setSelectedMuscle('Todos');
+  }
+
+  function removeExercise(id: string) {
+    setExerciseLogs(exerciseLogs.filter(log => log.id !== id));
   }
 
   function addSet(exerciseIndex: number) {
@@ -82,7 +110,6 @@ export default function ActiveWorkoutScreen() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    // 1. Create the workout
     const { data: workout, error: wError } = await supabase
       .from('entrenamientos')
       .insert([{ id_usuario: user.id, nombre: t('todays_workout') }])
@@ -95,19 +122,6 @@ export default function ActiveWorkoutScreen() {
       return;
     }
 
-    // 2. Create the sets
-    const setsToInsert = exerciseLogs.flatMap(log => 
-      log.sets.map(set => ({
-        id_entrenamiento: workout.id,
-        id_ejercicio: log.exerciseId,
-        peso: parseFloat(set.weight) || 0,
-        repeditciones: parseInt(set.reps) || 0 // NOTE: Checking typo in original schema column name if present or fixing it below
-      }))
-    );
-    
-    // Check column names (Wait, I used 'repeticiones' in schema.sql, let me check)
-    // In schema.sql I used: repeticiones INTEGER NOT NULL
-    
     const setsFormatted = exerciseLogs.flatMap(log => 
       log.sets.map(set => ({
         id_entrenamiento: workout.id,
@@ -125,9 +139,7 @@ export default function ActiveWorkoutScreen() {
       return;
     }
 
-    // 3. Update exercise records (if weight is higher) and user profile (streak)
     try {
-      // Get current exercises to compare weights
       const { data: currentExercises } = await supabase
         .from('ejercicios')
         .select('id, peso');
@@ -145,7 +157,6 @@ export default function ActiveWorkoutScreen() {
         await Promise.all(weightUpdates);
       }
 
-      // Update Profile: racha and ultima_fecha_entreno using unified logic
       const { data: profile } = await supabase
         .from('perfiles')
         .select('*')
@@ -153,7 +164,6 @@ export default function ActiveWorkoutScreen() {
         .single();
 
       if (profile) {
-        // First, check for missed days and sync lives/streak
         const sync = calculateStreakAndLives(
           profile.ultima_fecha_entreno,
           profile.racha,
@@ -162,11 +172,9 @@ export default function ActiveWorkoutScreen() {
           profile.dias_vida_gastada || []
         );
 
-        // Now, add today's workout to the streak
         const today = format(new Date(), 'yyyy-MM-dd');
         let finalizedStreak = sync.streak;
         
-        // If it's a new day and wasn't trained yet
         if (profile.ultima_fecha_entreno !== today) {
            finalizedStreak += 1;
         }
@@ -209,8 +217,23 @@ export default function ActiveWorkoutScreen() {
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
         {exerciseLogs.map((log, exIdx) => (
-          <View key={log.logId} style={[styles.exerciseCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <Text style={[styles.exerciseName, { color: colors.primary }]}>{log.name}</Text>
+          <View key={log.id} style={[styles.exerciseCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <View style={styles.exerciseHeader}>
+              <View style={styles.exerciseTitleContainer}>
+                <Text style={[styles.exerciseName, { color: colors.primary }]}>{log.name}</Text>
+                {log.previousWeight && log.previousWeight > 0 ? (
+                  <View style={[styles.previousWeightBadge, { backgroundColor: colors.primary + '20' }]}>
+                    <Ionicons name="trophy" size={12} color={colors.primary} />
+                    <Text style={[styles.previousWeightText, { color: colors.primary }]}>
+                      {t('previous')}: {log.previousWeight}kg
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
+              <TouchableOpacity onPress={() => removeExercise(log.id)}>
+                <Ionicons name="trash-outline" size={20} color="#FF3B30" />
+              </TouchableOpacity>
+            </View>
             
             <View style={styles.setRowHeader}>
               <Text style={[styles.setHeaderText, { color: colors.muted }]}>{t('set').toUpperCase()}</Text>
@@ -255,7 +278,6 @@ export default function ActiveWorkoutScreen() {
         </TouchableOpacity>
       </ScrollView>
 
-      {/* Exercise Selector Modal */}
       <Modal visible={isModalVisible} animationType="slide" transparent={true}>
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
@@ -274,6 +296,30 @@ export default function ActiveWorkoutScreen() {
                  value={exerciseSearchQuery}
                  onChangeText={setExerciseSearchQuery}
                />
+            </View>
+
+            <View style={styles.modalFilterContainer}>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.muscleScroll}>
+                {muscles.map((muscle) => (
+                  <TouchableOpacity
+                    key={muscle}
+                    style={[
+                      styles.muscleChip,
+                      { backgroundColor: colors.muted + '20', borderColor: colors.border },
+                      selectedMuscle === muscle && { backgroundColor: colors.primary, borderColor: colors.primary }
+                    ]}
+                    onPress={() => setSelectedMuscle(muscle)}
+                  >
+                    <Text style={[
+                      styles.muscleChipText,
+                      { color: colors.text },
+                      selectedMuscle === muscle && { color: '#000' }
+                    ]}>
+                      {t(muscle)}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
             </View>
 
             <FlatList
@@ -324,18 +370,20 @@ const styles = StyleSheet.create({
     paddingBottom: 50,
   },
   exerciseCard: {
-    backgroundColor: '#1a1a1a',
     borderRadius: 20,
     padding: 20,
     marginBottom: 20,
     borderWidth: 1,
-    borderColor: '#262626',
+  },
+  exerciseHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 15,
   },
   exerciseName: {
-    color: '#E8FB4B',
     fontSize: 20,
     fontWeight: '800',
-    marginBottom: 15,
   },
   setRowHeader: {
     flexDirection: 'row',
@@ -463,5 +511,39 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 16,
     fontWeight: '600',
+  },
+  modalFilterContainer: {
+    marginBottom: 15,
+  },
+  muscleScroll: {
+    paddingHorizontal: 2,
+    gap: 8,
+  },
+  muscleChip: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+  },
+  muscleChipText: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  exerciseTitleContainer: {
+    flex: 1,
+    gap: 4,
+  },
+  previousWeightBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    gap: 4,
+  },
+  previousWeightText: {
+    fontSize: 11,
+    fontWeight: '800',
   }
 });
