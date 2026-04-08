@@ -65,26 +65,29 @@ export default function SocialScreen() {
     if (friendIds.length === 0) { setFeed([]); setFeedLoading(false); return; }
 
     const { data: workouts } = await supabase
-      .from('entrenamientos').select('id, nombre, creado_el, id_usuario')
-      .in('id_usuario', friendIds).order('creado_el', { ascending: false }).limit(20);
+      .from('entrenamientos')
+      .select('id, nombre, creado_el, id_usuario, perfiles(id, nombre_usuario, url_avatar, racha)')
+      .in('id_usuario', friendIds)
+      .order('creado_el', { ascending: false })
+      .limit(20);
 
     if (!workouts || workouts.length === 0) { setFeed([]); setFeedLoading(false); return; }
 
     const workoutIds = workouts.map(w => w.id);
-    const friendProfileIds = [...new Set(workouts.map(w => w.id_usuario))];
 
-    const [profilesRes, reactionsRes, myReactionsRes] = await Promise.all([
-      supabase.from('perfiles').select('id, nombre_usuario, url_avatar, racha').in('id', friendProfileIds),
+    const [reactionsRes, myReactionsRes] = await Promise.all([
       supabase.from('reacciones_entrenamiento').select('id_entrenamiento, tipo_reaccion, id_usuario').in('id_entrenamiento', workoutIds),
       supabase.from('reacciones_entrenamiento').select('id_entrenamiento, tipo_reaccion').in('id_entrenamiento', workoutIds).eq('id_usuario', user.id),
     ]);
 
-    const profiles = profilesRes.data || [];
     const allReactions = reactionsRes.data || [];
     const myReactions = myReactionsRes.data || [];
 
     const feedData = workouts.map(workout => {
-      const profile = profiles.find(p => p.id === workout.id_usuario);
+      // Handle the case where perfiles might be returned as an array or single object by Supabase
+      const rawProfile = Array.isArray(workout.perfiles) ? workout.perfiles[0] : workout.perfiles;
+      const profile = rawProfile || { nombre_usuario: 'Usuario' };
+      
       const workoutReactions = allReactions.filter(r => r.id_entrenamiento === workout.id);
       const myReaction = myReactions.find(r => r.id_entrenamiento === workout.id);
       const reactionCounts: Record<string, number> = {};
@@ -409,7 +412,7 @@ const styles = StyleSheet.create({
   userCard: { padding: 14, borderRadius: 16, flexDirection: 'row', alignItems: 'center', marginBottom: 10, borderWidth: 1, gap: 12 },
   avatarSmall: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
   avatarLetter: { fontWeight: '800', fontSize: 16 },
-  avatarFull: { width: '100%', height: '100%' },
+  avatarFull: { width: '100%', height: '100%', borderRadius: 999 },
   userName: { fontSize: 15, fontWeight: '700', flex: 1 },
   addButton: { padding: 8, borderRadius: 10 },
   actionRow: { flexDirection: 'row', gap: 8 },

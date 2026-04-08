@@ -154,7 +154,8 @@ export default function RoutinesScreen() {
 
   const filteredCatalog = catalogExercises.filter(ex =>
     ex.nombre.toLowerCase().includes(catalogSearch.toLowerCase()) ||
-    (ex.musculo_principal && ex.musculo_principal.toLowerCase().includes(catalogSearch.toLowerCase()))
+    (ex.musculo_principal && ex.musculo_principal.toLowerCase().includes(catalogSearch.toLowerCase())) ||
+    (ex.categoria && ex.categoria.toLowerCase().includes(catalogSearch.toLowerCase()))
   );
 
   return (
@@ -334,7 +335,9 @@ export default function RoutinesScreen() {
                   onPress={() => addExerciseToRoutine(item)}
                 >
                   <Text style={[styles.catalogName, { color: colors.text }]}>{item.nombre}</Text>
-                  <Text style={[styles.catalogMuscle, { color: colors.secondary }]}>{item.musculo_principal}</Text>
+                  <Text style={[styles.catalogMuscle, { color: colors.secondary }]}>
+                    {item.categoria ? `${item.categoria} • ` : ''}{item.musculo_principal}
+                  </Text>
                 </TouchableOpacity>
               )}
             />
