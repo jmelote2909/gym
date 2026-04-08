@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useSettings } from '@/src/context/SettingsContext';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, FlatList, ActivityIndicator, SafeAreaView, Alert, Modal } from 'react-native';
 import { supabase } from '@/src/lib/supabase';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, addMonths, subMonths, isToday, isSaturday, isSunday, isBefore, startOfDay } from 'date-fns';
-import { es } from 'date-fns/locale';
+import { es, enUS } from 'date-fns/locale';
 import { calculateStreakAndLives } from '@/src/lib/streakLogic';
 import { useFocusEffect } from 'expo-router';
 
@@ -12,6 +13,8 @@ export default function CalendarScreen() {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [workouts, setWorkouts] = useState<any[]>([]);
+  const { t, colors, language } = useSettings();
+  const dateLocale = language === 'es' ? es : enUS;
   const [dayWorkouts, setDayWorkouts] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [profile, setProfile] = useState<any>(null);
@@ -179,41 +182,41 @@ export default function CalendarScreen() {
         style={[
             styles.dayContainer, 
             dayStyle,
-            isSelected && styles.selectedDay,
-            isCurrentToday && !isSelected && !hasWorkout && styles.todayMarker
+            isSelected && { backgroundColor: colors.primary, borderWidth: 2, borderColor: colors.text },
+            isCurrentToday && !isSelected && !hasWorkout && { borderWidth: 2, borderColor: colors.primary }
         ]}
         onPress={() => setSelectedDate(day)}
       >
         <Text style={[
             styles.dayText, 
             textStyle,
-            isSelected && styles.selectedDayText
+            isSelected && { color: colors.background, fontWeight: '800' }
         ]}>
           {format(day, 'd')}
         </Text>
-        {hasWorkout && <View style={styles.dot} />}
+        {hasWorkout && <View style={[styles.dot, { backgroundColor: isSelected ? colors.background : colors.primary }]} />}
       </TouchableOpacity>
     );
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <LinearGradient colors={['#1a1a1a', '#000']} style={styles.header}>
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+      <LinearGradient colors={[colors.card, colors.background]} style={[styles.header, { borderBottomColor: colors.border }]}>
         <View style={styles.monthSelector}>
           <TouchableOpacity onPress={() => setCurrentDate(subMonths(currentDate, 1))}>
-            <Ionicons name="chevron-back" size={24} color="#E8FB4B" />
+            <Ionicons name="chevron-back" size={24} color={colors.primary} />
           </TouchableOpacity>
-          <Text style={styles.monthTitle}>
-            {format(currentDate, 'MMMM yyyy', { locale: es }).toUpperCase()}
+          <Text style={[styles.monthTitle, { color: colors.text }]}>
+            {format(currentDate, 'MMMM yyyy', { locale: dateLocale }).toUpperCase()}
           </Text>
           <TouchableOpacity onPress={() => setCurrentDate(addMonths(currentDate, 1))}>
-            <Ionicons name="chevron-forward" size={24} color="#E8FB4B" />
+            <Ionicons name="chevron-forward" size={24} color={colors.primary} />
           </TouchableOpacity>
         </View>
 
         <View style={styles.weekDays}>
-          {['L', 'M', 'X', 'J', 'V', 'S', 'D'].map(day => (
-            <Text key={day} style={styles.weekDayText}>{day}</Text>
+          {(language === 'es' ? ['L', 'M', 'X', 'J', 'V', 'S', 'D'] : ['M', 'T', 'W', 'T', 'F', 'S', 'S']).map((day, index) => (
+            <Text key={`day-header-${index}`} style={[styles.weekDayText, { color: colors.secondary }]}>{day}</Text>
           ))}
         </View>
       </LinearGradient>
@@ -225,29 +228,29 @@ export default function CalendarScreen() {
 
         {/* Legend */}
         <View style={styles.legend}>
-           <View style={styles.legendItem}><View style={[styles.legendDot, {backgroundColor: '#4CAF50'}]} /><Text style={styles.legendText}>Entrenado</Text></View>
-           <View style={styles.legendItem}><View style={[styles.legendDot, {backgroundColor: '#FFEB3B'}]} /><Text style={styles.legendText}>Hoy</Text></View>
-           <View style={styles.legendItem}><View style={[styles.legendDot, {backgroundColor: '#3399FF'}]} /><Text style={styles.legendText}>Vida usada</Text></View>
-           <View style={styles.legendItem}><View style={[styles.legendDot, {backgroundColor: '#F44336'}]} /><Text style={styles.legendText}>Faltado</Text></View>
+           <View style={styles.legendItem}><View style={[styles.legendDot, {backgroundColor: '#4CAF50'}]} /><Text style={[styles.legendText, { color: colors.secondary }]}>{t('trained')}</Text></View>
+           <View style={styles.legendItem}><View style={[styles.legendDot, {backgroundColor: colors.primary}]} /><Text style={[styles.legendText, { color: colors.secondary }]}>{t('today')}</Text></View>
+           <View style={styles.legendItem}><View style={[styles.legendDot, {backgroundColor: '#3399FF'}]} /><Text style={[styles.legendText, { color: colors.secondary }]}>{t('life_used')}</Text></View>
+           <View style={styles.legendItem}><View style={[styles.legendDot, {backgroundColor: '#F44336'}]} /><Text style={[styles.legendText, { color: colors.secondary }]}>{t('missed')}</Text></View>
         </View>
 
         {/* Stats Row */}
         <View style={styles.statsRow}>
-           <LinearGradient colors={['#262626', '#1a1a1a']} style={styles.statCard}>
+           <View style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
               <Text style={styles.statEmoji}>🔥</Text>
-              <Text style={styles.statValue}>{profile?.streak || 0}</Text>
-              <Text style={styles.statLabel}>Racha</Text>
-           </LinearGradient>
-           <LinearGradient colors={['#262626', '#1a1a1a']} style={styles.statCard}>
+              <Text style={[styles.statValue, { color: colors.text }]}>{profile?.streak || 0}</Text>
+              <Text style={[styles.statLabel, { color: colors.secondary }]}>{t('streak')}</Text>
+           </View>
+           <View style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
               <Text style={styles.statEmoji}>🧊</Text>
-              <Text style={styles.statValue}>{profile?.lives ?? 3}</Text>
-              <Text style={styles.statLabel}>Vidas</Text>
-           </LinearGradient>
+              <Text style={[styles.statValue, { color: colors.text }]}>{profile?.lives ?? 3}</Text>
+              <Text style={[styles.statLabel, { color: colors.secondary }]}>{t('lives')}</Text>
+           </View>
         </View>
 
-        <View style={styles.detailsContainer}>
-          <Text style={styles.detailsTitle}>
-            {format(selectedDate, "eeee d 'de' MMMM", { locale: es })}
+        <View style={[styles.detailsContainer, { borderTopColor: colors.border }]}>
+          <Text style={[styles.detailsTitle, { color: colors.text }]}>
+            {format(selectedDate, "eeee d 'de' MMMM", { locale: dateLocale })}
           </Text>
           
           {loading ? (
@@ -256,25 +259,25 @@ export default function CalendarScreen() {
             dayWorkouts.map(workout => (
               <TouchableOpacity 
                 key={workout.id} 
-                style={styles.workoutCard}
+                style={[styles.workoutCard, { backgroundColor: colors.card, borderColor: colors.border }]}
                 onPress={() => showWorkoutSummary(workout)}
               >
-                <View style={styles.workoutIcon}>
-                  <Ionicons name="barbell" size={20} color="#000" />
+                <View style={[styles.workoutIcon, { backgroundColor: colors.primary }]}>
+                  <Ionicons name="barbell" size={20} color={colors.background} />
                 </View>
                 <View style={styles.workoutInfo}>
-                  <Text style={styles.workoutName}>{workout.nombre}</Text>
-                  <Text style={styles.workoutTime}>
+                  <Text style={[styles.workoutName, { color: colors.text }]}>{workout.nombre}</Text>
+                  <Text style={[styles.workoutTime, { color: colors.secondary }]}>
                     {format(new Date(workout.fecha), 'HH:mm')}
                   </Text>
                 </View>
-                <Ionicons name="chevron-forward" size={20} color="#444" />
+                <Ionicons name="chevron-forward" size={20} color={colors.muted} />
               </TouchableOpacity>
             ))
           ) : (
             <View style={styles.emptyContainer}>
-              <Ionicons name="calendar-outline" size={48} color="#333" />
-              <Text style={styles.emptyText}>No hay entrenamientos este día</Text>
+              <Ionicons name="calendar-outline" size={48} color={colors.muted} />
+              <Text style={[styles.emptyText, { color: colors.secondary }]}>{t('no_workouts')}</Text>
             </View>
           )}
         </View>
@@ -283,32 +286,32 @@ export default function CalendarScreen() {
       {/* Workout Summary Modal */}
       <Modal visible={isSummaryVisible} animationType="fade" transparent={true}>
         <View style={styles.modalOverlay}>
-          <LinearGradient colors={['#1a1a1a', '#000']} style={styles.summaryContent}>
+          <View style={[styles.summaryContent, { backgroundColor: colors.card, borderTopColor: colors.border }]}>
             <View style={styles.modalHeader}>
               <View>
-                <Text style={styles.summaryTitle}>{selectedWorkout?.nombre}</Text>
-                <Text style={styles.summarySubtitle}>
-                  {selectedWorkout && format(new Date(selectedWorkout.fecha), "d 'de' MMMM, HH:mm", { locale: es })}
+                <Text style={[styles.summaryTitle, { color: colors.text }]}>{selectedWorkout?.nombre}</Text>
+                <Text style={[styles.summarySubtitle, { color: colors.primary }]}>
+                  {selectedWorkout && format(new Date(selectedWorkout.fecha), "d 'de' MMMM, HH:mm", { locale: dateLocale })}
                 </Text>
               </View>
-              <TouchableOpacity onPress={() => setIsSummaryVisible(false)} style={styles.closeButton}>
-                <Ionicons name="close" size={24} color="#fff" />
+              <TouchableOpacity onPress={() => setIsSummaryVisible(false)} style={[styles.closeButton, { backgroundColor: colors.muted }]}>
+                <Ionicons name="close" size={24} color={colors.text} />
               </TouchableOpacity>
             </View>
 
             {detailsLoading ? (
-              <ActivityIndicator color="#E8FB4B" style={{ marginTop: 50 }} />
+              <ActivityIndicator color={colors.primary} style={{ marginTop: 50 }} />
             ) : (
               <ScrollView showsVerticalScrollIndicator={false}>
                 {workoutDetails.map((item, idx) => (
-                  <View key={idx} style={styles.summaryExerciseCard}>
-                    <Text style={styles.summaryExerciseName}>{item.name}</Text>
+                  <View key={idx} style={[styles.summaryExerciseCard, { backgroundColor: colors.muted + '20', borderColor: colors.border }]}>
+                    <Text style={[styles.summaryExerciseName, { color: colors.text }]}>{item.name}</Text>
                     <View style={styles.summarySetsGrid}>
                       {item.sets.map((set: any, sIdx: number) => (
-                        <View key={set.id} style={styles.summarySetRow}>
-                          <Text style={styles.summarySetNum}>{sIdx + 1}</Text>
-                          <Text style={styles.summarySetWeight}>{set.peso} kg</Text>
-                          <Text style={styles.summarySetReps}>{set.repeticiones} reps</Text>
+                        <View key={set.id} style={[styles.summarySetRow, { backgroundColor: colors.muted + '40' }]}>
+                          <Text style={[styles.summarySetNum, { color: colors.secondary }]}>{sIdx + 1}</Text>
+                          <Text style={[styles.summarySetWeight, { color: colors.text }]}>{set.peso} kg</Text>
+                          <Text style={[styles.summarySetReps, { color: colors.secondary }]}>{set.repeticiones} reps</Text>
                         </View>
                       ))}
                     </View>
@@ -316,7 +319,7 @@ export default function CalendarScreen() {
                 ))}
               </ScrollView>
             )}
-          </LinearGradient>
+          </View>
         </View>
       </Modal>
     </SafeAreaView>

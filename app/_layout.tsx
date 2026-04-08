@@ -7,6 +7,7 @@ import { supabase } from '@/src/lib/supabase';
 import { Session } from '@supabase/supabase-js';
 
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { SettingsProvider } from '@/src/context/SettingsContext';
 
 export const unstable_settings = {
   anchor: '(tabs)',
@@ -61,13 +62,17 @@ export default function RootLayout() {
   }, [session, initialized, segments]);
 
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <Stack>
-        <Stack.Screen name="(auth)" options={{ headerShown: false }} />
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
-      </Stack>
-      <StatusBar style="auto" />
-    </ThemeProvider>
+    <SettingsProvider>
+      <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+        <Stack>
+          <Stack.Screen name="(auth)" options={{ headerShown: false }} />
+          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+          <Stack.Screen name="notifications" options={{ title: 'Notificaciones', headerTintColor: '#E8FB4B', headerStyle: { backgroundColor: '#000' } }} />
+          <Stack.Screen name="settings" options={{ title: 'Ajustes', headerTintColor: '#E8FB4B', headerStyle: { backgroundColor: '#000' } }} />
+          <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
+        </Stack>
+        <StatusBar style="auto" />
+      </ThemeProvider>
+    </SettingsProvider>
   );
 }

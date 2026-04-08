@@ -1,12 +1,13 @@
 import { calculateStreakAndLives } from '@/src/lib/streakLogic';
+import { useSettings } from '@/src/context/SettingsContext';
 import { supabase } from '@/src/lib/supabase';
 import { Ionicons } from '@expo/vector-icons';
 import { format } from 'date-fns';
-import { es } from 'date-fns/locale';
+import { es, enUS } from 'date-fns/locale';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
-import { Dimensions, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View, Modal } from 'react-native';
+import { Dimensions, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View, Modal, Image } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Animated, {
   useAnimatedStyle,
@@ -65,6 +66,9 @@ export default function Dashboard() {
   const [esAdmin, setEsAdmin] = useState(false);
   const [friendActivities, setFriendActivities] = useState<any[]>([]);
   const [hasNewAlert, setHasNewAlert] = useState(false);
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const { t, colors, language } = useSettings();
+  const dateLocale = language === 'es' ? es : enUS;
   const [currentBannerMessage, setCurrentBannerMessage] = useState<string | null>(null);
 
   const bannerOpacity = useSharedValue(0);
@@ -87,7 +91,7 @@ export default function Dashboard() {
           // 1. Fetch user profile
           const { data, error } = await supabase
             .from('perfiles')
-            .select('*')
+            .select('*, url_avatar')
             .eq('id', user.id)
             .single();
 
@@ -107,6 +111,7 @@ export default function Dashboard() {
             setHeight(data.estatura ? `${data.estatura}cm` : '--');
             setHasTrainedToday(sync.todayTrained);
             setEsAdmin(!!data.es_admin);
+            setAvatarUrl(data.url_avatar || null);
 
             if (sync.streak !== data.racha || sync.lives !== data.vidas) {
               await supabase.from('perfiles').update({
@@ -251,13 +256,15 @@ export default function Dashboard() {
     router.push('/notifications' as any);
   }
 
-  const formattedDate = format(new Date(), "EEEE, d 'de' MMMM", { locale: es });
+  const formattedDate = language === 'es' 
+    ? format(new Date(), "EEEE, d 'de' MMMM", { locale: es })
+    : format(new Date(), "EEEE, MMMM d", { locale: enUS });
   const capitalizedDate = formattedDate.charAt(0).toUpperCase() + formattedDate.slice(1);
 
   const router = useRouter();
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       {/* Floating Banner */}
       <Animated.View style={[styles.bannerContainer, bannerStyle]}>
         <LinearGradient 
@@ -278,50 +285,62 @@ export default function Dashboard() {
       <ScrollView contentContainerStyle={styles.scrollContent}>
 
         {/* Header */}
-        <View style={styles.header}>
+        <View style={[styles.header, { borderBottomColor: colors.border }]}>
           <View>
-            <Text style={styles.greeting}>Hola,</Text>
-            <Text style={styles.name}>{userName} 🔥</Text>
+            <Text style={[styles.greeting, { color: colors.secondary }]}>{t('dashboard')}</Text>
+            <Text style={[styles.name, { color: colors.text }]}>{userName || 'Guerrero'} 🔥</Text>
           </View>
           <View style={styles.headerActions}>
             <TouchableOpacity 
               style={[styles.profileButton, { marginRight: 10 }]} 
               onPress={openAlert}
             >
-              <Ionicons name="notifications-outline" size={28} color={hasNewAlert ? "#E8FB4B" : "#fff"} />
-              {hasNewAlert && <View style={styles.redDot} />}
+              <Ionicons name="notifications-outline" size={28} color={hasNewAlert ? colors.primary : colors.text} />
+              {hasNewAlert && <View style={[styles.redDot, { borderColor: colors.background }]} />}
             </TouchableOpacity>
-
+ 
             {esAdmin && (
               <TouchableOpacity 
-                style={[styles.profileButton, { marginRight: 10, borderColor: '#E8FB4B', borderWidth: 1 }]} 
+                style={[styles.profileButton, { marginRight: 10, borderColor: colors.primary, borderWidth: 1 }]} 
                 onPress={() => router.push('/(admin)/admin' as any)}
               >
-                <Ionicons name="shield-checkmark" size={24} color="#E8FB4B" />
+                <Ionicons name="shield-checkmark" size={24} color={colors.primary} />
               </TouchableOpacity>
             )}
             <TouchableOpacity style={styles.profileButton} onPress={() => router.push('/(tabs)/profile' as any)}>
-              <Ionicons name="person-circle-outline" size={32} color="#fff" />
+              {avatarUrl ? (
+                <Image source={{ uri: avatarUrl }} style={styles.avatarMini} />
+              ) : (
+                <Ionicons name="person-circle-outline" size={32} color={colors.text} />
+              )}
             </TouchableOpacity>
           </View>
         </View>
 
         {/* Stats Summary */}
         <View style={styles.statsContainer}>
-          <LinearGradient colors={['#262626', '#1a1a1a']} style={styles.statCard}>
-            <AnimatedFire />
-            <Text style={styles.statNumber}>{streak} DÍAS</Text>
-            <Text style={styles.statLabel}>Mi Racha</Text>
-          </LinearGradient>
-          <LinearGradient colors={['#262626', '#1a1a1a']} style={styles.statCard}>
-            <Text style={styles.statNumber}>{weight} / {height}</Text>
-            <Text style={styles.statLabel}>Peso / Estatura</Text>
-          </LinearGradient>
+          <View style={[styles.statsRow, { backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1, flex: 1 }]}>
+          <View style={styles.statItem}>
+            <Text style={[styles.statValue, { color: colors.primary }]}>{weight}</Text>
+            <Text style={[styles.statLabel, { color: colors.secondary }]}>{t('weight')}</Text>
+          </View>
+          <View style={[styles.statDivider, { backgroundColor: colors.border }]} />
+          <View style={styles.statItem}>
+            <Text style={[styles.statValue, { color: colors.primary }]}>{height}</Text>
+            <Text style={[styles.statLabel, { color: colors.secondary }]}>{t('height')}</Text>
+          </View>
+          <View style={[styles.statDivider, { backgroundColor: colors.border }]} />
+          <View style={styles.statItem}>
+             <Ionicons name="flame" size={24} color={colors.primary} />
+            <Text style={[styles.statValue, { color: colors.primary }]}>{streak}</Text>
+            <Text style={[styles.statLabel, { color: colors.secondary }]}>{t('streak')}</Text>
+          </View>
+        </View>
         </View>
 
         {/* Action Button */}
         <View style={styles.actionSection}>
-          <Text style={styles.dateLabel}>{capitalizedDate}</Text>
+          <Text style={[styles.dateLabel, { color: colors.primary }]}>{capitalizedDate}</Text>
           <TouchableOpacity
             style={[styles.mainButton, hasTrainedToday && styles.disabledButton]}
             onPress={() => !hasTrainedToday && router.push('/workout/active')}
@@ -339,7 +358,7 @@ export default function Dashboard() {
                 color={hasTrainedToday ? "#666" : "#000"}
               />
               <Text style={[styles.buttonText, hasTrainedToday && styles.disabledButtonText]}>
-                {hasTrainedToday ? 'HOY YA HAS ENTRENADO' : 'REGISTRAR ENTRENAMIENTO DE HOY'}
+                {hasTrainedToday ? t('already_trained').toUpperCase() : t('train_today').toUpperCase()}
               </Text>
             </LinearGradient>
           </TouchableOpacity>
@@ -347,29 +366,31 @@ export default function Dashboard() {
 
         {/* Recent Activity Section */}
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Actividad de amigos</Text>
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>{t('friend_activity')}</Text>
         </View>
 
         {friendActivities.length > 0 ? (
           friendActivities.map((activity) => (
-            <View key={activity.id} style={styles.activityCard}>
-              <View style={styles.avatarPlaceholder}>
-                <Text style={styles.avatarText}>
-                  {activity.nombre_usuario?.substring(0, 2).toUpperCase() || '??'}
-                </Text>
+            <View key={activity.id} style={[styles.friendCard, { backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1 }]}>
+              <View style={[styles.friendAvatar, { backgroundColor: colors.muted }]}>
+                {activity.url_avatar ? (
+                  <Image source={{ uri: activity.url_avatar }} style={styles.avatarMini} />
+                ) : (
+                  <Text style={[styles.friendLetter, { color: colors.text }]}>{activity.nombre_usuario?.[0]}</Text>
+                )}
               </View>
-              <View style={styles.activityInfo}>
-                <Text style={styles.activityText}>
-                  <Text style={styles.boldText}>{activity.nombre_usuario}</Text> ha reanudado su racha a <Text style={styles.boldText}>{activity.racha} días</Text>
-                </Text>
+              <View style={styles.friendInfo}>
+                <Text style={[styles.friendName, { color: colors.text }]}>{activity.nombre_usuario}</Text>
+                <Text style={[styles.friendStatus, { color: colors.primary }]}>{t('trained_today')}</Text>
               </View>
+              <Ionicons name="checkmark-circle" size={24} color={colors.primary} />
             </View>
           ))
         ) : (
-          <View style={styles.activityCard}>
+          <View style={[styles.activityCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
             <View style={styles.activityInfo}>
-              <Text style={styles.activityText}>
-                Aún no hay actividad de tus amigos hoy. ¡Anímalos a entrenar!
+              <Text style={[styles.activityText, { color: colors.secondary }]}>
+                {t('no_friends_activity')}
               </Text>
             </View>
           </View>
@@ -471,7 +492,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   dateLabel: {
-    color: '#E8FB4B',
     fontSize: 14,
     fontWeight: '700',
     marginBottom: 10,
@@ -491,7 +511,6 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   sectionTitle: {
-    color: '#fff',
     fontSize: 20,
     fontWeight: '700',
   },
@@ -500,14 +519,12 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   activityCard: {
-    backgroundColor: '#1a1a1a',
     padding: 15,
     borderRadius: 15,
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 15,
     borderWidth: 1,
-    borderColor: '#262626',
   },
   avatarPlaceholder: {
     width: 45,
@@ -526,7 +543,6 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   activityText: {
-    color: '#ccc',
     fontSize: 14,
     lineHeight: 20,
   },
@@ -579,5 +595,60 @@ const styles = StyleSheet.create({
   bannerCloseButton: {
     padding: 5,
     marginLeft: 10,
+  },
+  avatarMini: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+  },
+  statsRow: {
+    flexDirection: 'row',
+    padding: 20,
+    borderRadius: 20,
+    alignItems: 'center',
+    gap: 10,
+  },
+  statItem: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  statValue: {
+    fontSize: 20,
+    fontWeight: '800',
+  },
+  statDivider: {
+    width: 1,
+    height: 30,
+  },
+  friendCard: {
+    flexDirection: 'row',
+    padding: 15,
+    borderRadius: 15,
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  friendAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 15,
+    overflow: 'hidden',
+  },
+  friendLetter: {
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  friendInfo: {
+    flex: 1,
+  },
+  friendName: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  friendStatus: {
+    fontSize: 12,
+    marginTop: 2,
   },
 });

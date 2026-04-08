@@ -6,6 +6,7 @@ import { calculateStreakAndLives } from '@/src/lib/streakLogic';
 import { format } from 'date-fns';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
+import { useSettings } from '@/src/context/SettingsContext';
 
 interface Set {
   id: string;
@@ -26,6 +27,7 @@ export default function ActiveWorkoutScreen() {
   const [availableExercises, setAvailableExercises] = useState<any[]>([]);
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [loading, setLoading] = useState(false);
+  const { t, colors } = useSettings();
 
   useEffect(() => {
     fetchExercises();
@@ -61,7 +63,7 @@ export default function ActiveWorkoutScreen() {
 
   async function finishWorkout() {
     if (exerciseLogs.length === 0) {
-      Alert.alert('Entrenamiento vacío', 'Añade al menos un ejercicio.');
+      Alert.alert(t('empty_workout'), t('add_exercise_hint'));
       return;
     }
 
@@ -72,7 +74,7 @@ export default function ActiveWorkoutScreen() {
     // 1. Create the workout
     const { data: workout, error: wError } = await supabase
       .from('entrenamientos')
-      .insert([{ id_usuario: user.id, nombre: 'Entrenamiento de hoy' }])
+      .insert([{ id_usuario: user.id, nombre: t('todays_workout') }])
       .select()
       .single();
 
@@ -170,98 +172,98 @@ export default function ActiveWorkoutScreen() {
           .eq('id', user.id);
       }
 
-      Alert.alert('¡Entrenamiento guardado!', 'Buen trabajo, guerrero. Tu racha y récords han sido actualizados.');
+      Alert.alert(t('workout_saved'), t('workout_saved_subtitle'));
       router.replace('/(tabs)');
     } catch (err) {
       console.error(err);
-      Alert.alert('¡Entrenamiento guardado!', 'Se guardó el entreno, pero hubo un error al actualizar récords.');
+      Alert.alert(t('workout_saved'), t('workout_saved_error'));
       router.replace('/(tabs)');
     }
     setLoading(false);
   }
 
   return (
-    <View style={styles.container}>
-      <LinearGradient colors={['#1a1a1a', '#000']} style={styles.header}>
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <LinearGradient colors={[colors.card, colors.background]} style={styles.header}>
         <View style={styles.headerTop}>
           <TouchableOpacity onPress={() => router.back()}>
-            <Ionicons name="close" size={28} color="#fff" />
+            <Ionicons name="close" size={28} color={colors.text} />
           </TouchableOpacity>
-          <Text style={styles.title}>Entrenando</Text>
+          <Text style={[styles.title, { color: colors.text }]}>{t('training')}</Text>
           <TouchableOpacity onPress={finishWorkout} disabled={loading}>
-            {loading ? <ActivityIndicator color="#E8FB4B" /> : <Text style={styles.finishText}>FINALIZAR</Text>}
+            {loading ? <ActivityIndicator color={colors.primary} /> : <Text style={[styles.finishText, { color: colors.primary }]}>{t('finish').toUpperCase()}</Text>}
           </TouchableOpacity>
         </View>
       </LinearGradient>
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
         {exerciseLogs.map((log, exIdx) => (
-          <View key={log.logId} style={styles.exerciseCard}>
-            <Text style={styles.exerciseName}>{log.name}</Text>
+          <View key={log.logId} style={[styles.exerciseCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <Text style={[styles.exerciseName, { color: colors.primary }]}>{log.name}</Text>
             
             <View style={styles.setRowHeader}>
-              <Text style={styles.setHeaderText}>SERIE</Text>
-              <Text style={styles.setHeaderText}>KG</Text>
-              <Text style={styles.setHeaderText}>REPS</Text>
+              <Text style={[styles.setHeaderText, { color: colors.muted }]}>{t('set').toUpperCase()}</Text>
+              <Text style={[styles.setHeaderText, { color: colors.muted }]}>KG</Text>
+              <Text style={[styles.setHeaderText, { color: colors.muted }]}>REPS</Text>
             </View>
 
             {log.sets.map((set, setIdx) => (
               <View key={set.id} style={styles.setRow}>
-                <View style={styles.setNumberBadge}>
-                  <Text style={styles.setNumberText}>{setIdx + 1}</Text>
+                <View style={[styles.setNumberBadge, { backgroundColor: colors.background }]}>
+                  <Text style={[styles.setNumberText, { color: colors.secondary }]}>{setIdx + 1}</Text>
                 </View>
                 <TextInput
-                  style={styles.setInput}
+                  style={[styles.setInput, { backgroundColor: colors.background, color: colors.text }]}
                   keyboardType="numeric"
                   placeholder="0"
-                  placeholderTextColor="#444"
+                  placeholderTextColor={colors.muted}
                   value={set.weight}
                   onChangeText={(val) => updateSet(exIdx, setIdx, 'weight', val)}
                 />
                 <TextInput
-                  style={styles.setInput}
+                  style={[styles.setInput, { backgroundColor: colors.background, color: colors.text }]}
                   keyboardType="numeric"
                   placeholder="0"
-                  placeholderTextColor="#444"
+                  placeholderTextColor={colors.muted}
                   value={set.reps}
                   onChangeText={(val) => updateSet(exIdx, setIdx, 'reps', val)}
                 />
               </View>
             ))}
 
-            <TouchableOpacity style={styles.addSetButton} onPress={() => addSet(exIdx)}>
-              <Ionicons name="add" size={18} color="#E8FB4B" />
-              <Text style={styles.addSetText}>Añadir Serie</Text>
+            <TouchableOpacity style={[styles.addSetButton, { backgroundColor: colors.background }]} onPress={() => addSet(exIdx)}>
+              <Ionicons name="add" size={18} color={colors.primary} />
+              <Text style={[styles.addSetText, { color: colors.primary }]}>{t('add_set')}</Text>
             </TouchableOpacity>
           </View>
         ))}
 
-        <TouchableOpacity style={styles.addExerciseButton} onPress={() => setIsModalVisible(true)}>
-          <Ionicons name="barbell-outline" size={24} color="#000" />
-          <Text style={styles.addExerciseText}>AÑADIR EJERCICIO</Text>
+        <TouchableOpacity style={[styles.addExerciseButton, { backgroundColor: colors.primary }]} onPress={() => setIsModalVisible(true)}>
+          <Ionicons name="barbell-outline" size={24} color={colors.background} />
+          <Text style={[styles.addExerciseText, { color: colors.background }]}>{t('add_exercise').toUpperCase()}</Text>
         </TouchableOpacity>
       </ScrollView>
 
       {/* Exercise Selector Modal */}
       <Modal visible={isModalVisible} animationType="slide" transparent={true}>
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
+          <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Seleccionar Ejercicio</Text>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>{t('select_exercise')}</Text>
               <TouchableOpacity onPress={() => setIsModalVisible(false)}>
-                <Ionicons name="close" size={24} color="#fff" />
+                <Ionicons name="close" size={24} color={colors.text} />
               </TouchableOpacity>
             </View>
             <FlatList
               data={availableExercises}
               keyExtractor={(item) => item.id}
               renderItem={({ item }) => (
-                <TouchableOpacity style={styles.exerciseSelectItem} onPress={() => addExerciseToWorkout(item)}>
-                  <Text style={styles.exerciseSelectName}>{item.nombre}</Text>
-                  <Text style={styles.exerciseSelectMuscle}>{item.musculo_objetivo}</Text>
+                <TouchableOpacity style={[styles.exerciseSelectItem, { borderBottomColor: colors.border }]} onPress={() => addExerciseToWorkout(item)}>
+                  <Text style={[styles.exerciseSelectName, { color: colors.text }]}>{item.nombre}</Text>
+                  <Text style={[styles.exerciseSelectMuscle, { color: colors.secondary }]}>{item.musculo_objetivo}</Text>
                 </TouchableOpacity>
               )}
-              ListEmptyComponent={<Text style={styles.emptyText}>No tienes ejercicios. Créalos en la pestaña Ejercicios primero.</Text>}
+              ListEmptyComponent={<Text style={[styles.emptyText, { color: colors.muted }]}>{t('no_exercises_created')}</Text>}
             />
           </View>
         </View>

@@ -4,13 +4,16 @@ import { supabase } from '@/src/lib/supabase';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { format } from 'date-fns';
-import { es } from 'date-fns/locale';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useSettings } from '@/src/context/SettingsContext';
+import { enUS, es as esLocale } from 'date-fns/locale';
 
 export default function NotificationsScreen() {
   const router = useRouter();
   const [notifications, setNotifications] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const { t, colors, language } = useSettings();
+  const dateLocale = language === 'es' ? esLocale : enUS;
 
   useEffect(() => {
     fetchNotifications();
@@ -31,37 +34,37 @@ export default function NotificationsScreen() {
 
   const renderItem = ({ item }: { item: any }) => {
     const date = new Date(item.creado_el);
-    const dateStr = format(date, "d 'de' MMMM", { locale: es });
+    const dateStr = format(date, "d 'de' MMMM", { locale: dateLocale });
     const timeStr = format(date, "HH:mm");
 
     return (
-      <View style={styles.notificationCard}>
+      <View style={[styles.notificationCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
         <View style={styles.cardHeader}>
-          <View style={styles.iconContainer}>
-            <Ionicons name="notifications" size={20} color="#E8FB4B" />
+          <View style={[styles.iconContainer, { backgroundColor: colors.primary + '20' }]}>
+            <Ionicons name="notifications" size={20} color={colors.primary} />
           </View>
-          <Text style={styles.dateText}>{dateStr} • {timeStr}</Text>
+          <Text style={[styles.dateText, { color: colors.secondary }]}>{dateStr} • {timeStr}</Text>
         </View>
-        <Text style={styles.messageText}>{item.mensaje}</Text>
+        <Text style={[styles.messageText, { color: colors.text }]}>{item.mensaje}</Text>
       </View>
     );
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <LinearGradient colors={['#1a1a1a', '#000']} style={styles.header}>
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+      <View style={[styles.header, { backgroundColor: colors.card, borderBottomColor: colors.border, borderBottomWidth: 1 }]}>
         <View style={styles.headerTop}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-            <Ionicons name="arrow-back" size={24} color="#fff" />
+          <TouchableOpacity onPress={() => router.back()} style={[styles.backButton, { backgroundColor: colors.muted }]}>
+            <Ionicons name="arrow-back" size={24} color={colors.text} />
           </TouchableOpacity>
-          <Text style={styles.title}>Notificaciones</Text>
+          <Text style={[styles.title, { color: colors.text }]}>{t('notifications')}</Text>
           <View style={{ width: 40 }} />
         </View>
-      </LinearGradient>
+      </View>
 
       {loading ? (
         <View style={styles.center}>
-          <ActivityIndicator color="#E8FB4B" size="large" />
+          <ActivityIndicator color={colors.primary} size="large" />
         </View>
       ) : (
         <FlatList
@@ -71,8 +74,8 @@ export default function NotificationsScreen() {
           contentContainerStyle={styles.listContent}
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
-              <Ionicons name="notifications-off-outline" size={60} color="#333" />
-              <Text style={styles.emptyText}>No tienes notificaciones aún</Text>
+              <Ionicons name="notifications-off-outline" size={60} color={colors.muted} />
+              <Text style={[styles.emptyText, { color: colors.secondary }]}>{t('no_notifications')}</Text>
             </View>
           }
         />

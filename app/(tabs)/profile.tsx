@@ -1,6 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, Alert, TextInput, ScrollView, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, Alert, TextInput, ScrollView, ActivityIndicator, Image } from 'react-native';
 import { supabase } from '@/src/lib/supabase';
+import * as ImagePicker from 'expo-image-picker';
+import * as FileSystem from 'expo-file-system/legacy';
+import { decode } from 'base64-arraybuffer';
+import { useRouter } from 'expo-router';
+import { useSettings } from '@/src/context/SettingsContext';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 
@@ -11,8 +16,12 @@ export default function ProfileScreen() {
   const [peso, setPeso] = useState('');
   const [estatura, setEstatura] = useState('');
   const [newPassword, setNewPassword] = useState('');
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const { t, colors } = useSettings();
+  const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
+  const [uploading, setUploading] = useState(false);
 
   useEffect(() => {
     fetchProfile();
@@ -24,7 +33,7 @@ export default function ProfileScreen() {
       setEmail(user.email || '');
       const { data: profile } = await supabase
         .from('perfiles')
-        .select('nombre_usuario, peso, estatura')
+        .select('nombre_usuario, peso, estatura, url_avatar')
         .eq('id', user.id)
         .single();
       if (profile) {
@@ -32,7 +41,53 @@ export default function ProfileScreen() {
         setInitialNickname(profile.nombre_usuario || '');
         setPeso(profile.peso ? profile.peso.toString() : '');
         setEstatura(profile.estatura ? profile.estatura.toString() : '');
+        setAvatarUrl(profile.url_avatar || null);
       }
+    }
+  }
+
+  async function pickImage() {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.5,
+    });
+
+    if (!result.canceled) {
+      uploadImage(result.assets[0].uri);
+    }
+  }
+
+  async function uploadImage(uri: string) {
+    try {
+      setUploading(true);
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const fileExt = uri.split('.').pop();
+      const fileName = `${user.id}/${Date.now()}.${fileExt}`;
+      const filePath = `${fileName}`;
+
+      const base64 = await FileSystem.readAsStringAsync(uri, { encoding: 'base64' });
+      const { data, error: uploadError } = await supabase.storage
+        .from('avatars')
+        .upload(filePath, decode(base64), {
+          contentType: `image/${fileExt}`,
+          upsert: true
+        });
+
+      if (uploadError) throw uploadError;
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('avatars')
+        .getPublicUrl(filePath);
+
+      setAvatarUrl(publicUrl);
+    } catch (error: any) {
+      Alert.alert('Error al subir imagen', error.message);
+    } finally {
+      setUploading(false);
     }
   }
 
@@ -55,10 +110,11 @@ export default function ProfileScreen() {
       }
     }
 
-    // 2. Update Nickname, Weight, Height in 'perfiles' table
+    // 2. Update Nickname, Weight, Height, Avatar in 'perfiles' table
     const updateData: any = {
       peso: parseFloat(peso) || null,
-      estatura: parseFloat(estatura) || null
+      estatura: parseFloat(estatura) || null,
+      url_avatar: avatarUrl
     };
     
     // Only update nickname if it changed to avoid unique constraint false positives
@@ -94,107 +150,136 @@ export default function ProfileScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.header}>
-          <View style={styles.avatarLarge}>
-            <Ionicons name="person" size={60} color="#E8FB4B" />
-          </View>
+          <TouchableOpacity 
+            style={[styles.avatarLarge, { backgroundColor: colors.card, borderColor: colors.border }]} 
+            onPress={isEditing ? pickImage : undefined}
+            disabled={uploading}
+          >
+            {avatarUrl ? (
+              <Image source={{ uri: avatarUrl }} style={styles.avatarImage} />
+            ) : (
+              <Ionicons name="person" size={60} color={colors.primary} />
+            )}
+            {isEditing && (
+              <View style={[styles.uploadBadge, { backgroundColor: colors.primary, borderColor: colors.background }]}>
+                {uploading ? (
+                  <ActivityIndicator color={colors.background} size="small" />
+                ) : (
+                  <Ionicons name="camera" size={20} color={colors.background} />
+                )}
+              </View>
+            )}
+          </TouchableOpacity>
           {!isEditing && (
             <>
-              <Text style={styles.emailText}>{nickname || 'Sin nombre'}</Text>
-              <Text style={styles.memberSince}>{email}</Text>
+              <Text style={[styles.emailText, { color: colors.text }]}>{nickname || 'Sin nombre'}</Text>
+              <Text style={[styles.memberSince, { color: colors.secondary }]}>{email}</Text>
             </>
+          )}
+          {isEditing && (
+            <TouchableOpacity onPress={pickImage} disabled={uploading}>
+              <Text style={[styles.changePhotoText, { color: colors.primary }]}>{uploading ? 'Subiendo...' : t('change_photo')}</Text>
+            </TouchableOpacity>
           )}
         </View>
 
         {isEditing ? (
-          <View style={styles.editForm}>
-            <Text style={styles.label}>NICKNAME</Text>
-            <TextInput
-              style={styles.input}
-              value={nickname}
-              onChangeText={setNickname}
-              placeholder="Tu nombre de usuario"
-              placeholderTextColor="#666"
-            />
+          <View style={[styles.editSection, { backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1 }]}>
+            <View style={styles.inputGroup}>
+              <Text style={[styles.label, { color: colors.secondary }]}>{t('nickname')}</Text>
+              <TextInput
+                style={[styles.input, { color: colors.text, borderBottomColor: colors.border }]}
+                value={nickname}
+                onChangeText={setNickname}
+                placeholder={t('nickname')}
+                placeholderTextColor={colors.muted}
+              />
+            </View>
             
-            <Text style={styles.label}>CORREO ELECTRÓNICO</Text>
-            <TextInput
-              style={styles.input}
-              value={email}
-              onChangeText={setEmail}
-              placeholder="tu@email.com"
-              placeholderTextColor="#666"
-              autoCapitalize="none"
-            />
-
-            <Text style={styles.label}>CAMBIAR CONTRASEÑA</Text>
-            <TextInput
-              style={styles.input}
-              value={newPassword}
-              onChangeText={setNewPassword}
-              placeholder="Escribe para cambiar"
-              placeholderTextColor="#666"
-              secureTextEntry
-            />
-
             <View style={styles.row}>
-              <View style={{ flex: 1, marginRight: 10 }}>
-                <Text style={styles.label}>PESO (kg)</Text>
+              <View style={[styles.inputGroup, { flex: 1 }]}>
+                <Text style={[styles.label, { color: colors.secondary }]}>{t('weight')} (kg)</Text>
                 <TextInput
-                  style={styles.input}
+                  style={[styles.input, { color: colors.text, borderBottomColor: colors.border }]}
                   value={peso}
                   onChangeText={setPeso}
-                  placeholder="0.0"
-                  placeholderTextColor="#666"
                   keyboardType="numeric"
                 />
               </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.label}>ESTATURA (cm)</Text>
+              <View style={{ width: 20 }} />
+              <View style={[styles.inputGroup, { flex: 1 }]}>
+                <Text style={[styles.label, { color: colors.secondary }]}>{t('height')} (cm)</Text>
                 <TextInput
-                  style={styles.input}
+                  style={[styles.input, { color: colors.text, borderBottomColor: colors.border }]}
                   value={estatura}
                   onChangeText={setEstatura}
-                  placeholder="0"
-                  placeholderTextColor="#666"
                   keyboardType="numeric"
                 />
               </View>
             </View>
 
-            <View style={styles.buttonGroup}>
-               <TouchableOpacity style={styles.cancelButton} onPress={() => setIsEditing(false)}>
-                  <Text style={styles.cancelButtonText}>Cancelar</Text>
-               </TouchableOpacity>
-               <TouchableOpacity style={styles.saveButton} onPress={handleUpdateProfile} disabled={loading}>
-                  {loading ? <ActivityIndicator color="#000" /> : <Text style={styles.saveButtonText}>Guardar</Text>}
-               </TouchableOpacity>
+            <View style={styles.inputGroup}>
+              <Text style={[styles.label, { color: colors.secondary }]}>{t('change_password')}</Text>
+              <TextInput
+                style={[styles.input, { color: colors.text, borderBottomColor: colors.border }]}
+                value={newPassword}
+                onChangeText={setNewPassword}
+                placeholder={t('change_password_hint')}
+                placeholderTextColor={colors.muted}
+                secureTextEntry
+              />
+            </View>
+
+            <View style={styles.editActions}>
+              <TouchableOpacity style={[styles.cancelButton, { borderColor: colors.border }]} onPress={() => setIsEditing(false)}>
+                <Text style={[styles.cancelButtonText, { color: colors.secondary }]}>{t('cancel')}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.saveButton, { backgroundColor: colors.primary }]} onPress={handleUpdateProfile} disabled={loading}>
+                <Text style={styles.saveButtonText}>{loading ? '...' : t('save')}</Text>
+              </TouchableOpacity>
             </View>
           </View>
         ) : (
-          <View style={styles.menu}>
-            <TouchableOpacity style={styles.menuItem} onPress={() => setIsEditing(true)}>
-              <Ionicons name="create-outline" size={24} color="#888" />
-              <Text style={styles.menuText}>Editar Perfil</Text>
-              <Ionicons name="chevron-forward" size={20} color="#444" />
-            </TouchableOpacity>
-            
-            <TouchableOpacity style={styles.menuItem}>
-              <Ionicons name="settings-outline" size={24} color="#888" />
-              <Text style={styles.menuText}>Privacidad</Text>
-              <Ionicons name="chevron-forward" size={20} color="#444" />
-            </TouchableOpacity>
+          <View>
+            <View style={[styles.menuSection, { backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1 }]}>
+              <TouchableOpacity style={styles.menuItem} onPress={() => setIsEditing(true)}>
+                <Ionicons name="create-outline" size={24} color={colors.secondary} />
+                <Text style={[styles.menuText, { color: colors.text }]}>{t('edit_profile')}</Text>
+                <Ionicons name="chevron-forward" size={20} color={colors.muted} />
+              </TouchableOpacity>
+              
+              <TouchableOpacity style={styles.menuItem} onPress={() => router.push('/notifications' as any)}>
+                <Ionicons name="notifications-outline" size={24} color={colors.secondary} />
+                <Text style={[styles.menuText, { color: colors.text }]}>{t('notifications')}</Text>
+                <Ionicons name="chevron-forward" size={20} color={colors.muted} />
+              </TouchableOpacity>
+            </View>
 
-            <TouchableOpacity style={styles.signOutButton} onPress={handleSignOut}>
-              <Text style={styles.signOutText}>CERRAR SESIÓN</Text>
-              <Ionicons name="log-out-outline" size={20} color="#ff4444" />
-            </TouchableOpacity>
+            <View style={[styles.menuSection, { backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1 }]}>
+              <TouchableOpacity style={styles.menuItem} onPress={() => router.push('/settings' as any)}>
+                <Ionicons name="settings-outline" size={24} color={colors.secondary} />
+                <Text style={[styles.menuText, { color: colors.text }]}>{t('settings')}</Text>
+                <Ionicons name="chevron-forward" size={20} color={colors.muted} />
+              </TouchableOpacity>
+
+              <TouchableOpacity style={styles.menuItem}>
+                <Ionicons name="shield-outline" size={24} color={colors.secondary} />
+                <Text style={[styles.menuText, { color: colors.text }]}>{t('privacy')}</Text>
+                <Ionicons name="chevron-forward" size={20} color={colors.muted} />
+              </TouchableOpacity>
+
+              <TouchableOpacity style={styles.signOutButton} onPress={handleSignOut}>
+                <Text style={[styles.signOutText, { color: colors.error }]}>{t('logout')}</Text>
+                <Ionicons name="log-out-outline" size={20} color={colors.error} />
+              </TouchableOpacity>
+            </View>
           </View>
         )}
 
-        <Text style={styles.versionText}>V 1.1.0 - GYM PRO GOLD</Text>
+        <Text style={[styles.versionText, { color: colors.muted }]}>V 1.1.0 - GYM PRO GOLD</Text>
       </ScrollView>
     </SafeAreaView>
   );
@@ -203,7 +288,6 @@ export default function ProfileScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#000',
   },
   scrollContent: {
     padding: 30,
@@ -217,38 +301,30 @@ const styles = StyleSheet.create({
     width: 120,
     height: 120,
     borderRadius: 60,
-    backgroundColor: '#1a1a1a',
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 20,
     borderWidth: 2,
-    borderColor: '#262626',
   },
   emailText: {
-    color: '#fff',
     fontSize: 26,
     fontWeight: '900',
   },
   memberSince: {
-    color: '#888',
     fontSize: 14,
     marginTop: 5,
   },
-  menu: {
-    backgroundColor: '#1a1a1a',
-    borderRadius: 25,
-    padding: 10,
-    marginBottom: 40,
+  menuSection: {
+    borderRadius: 20,
+    padding: 5,
+    marginBottom: 20,
   },
   menuItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: '#262626',
+    padding: 15,
   },
   menuText: {
-    color: '#ccc',
     fontSize: 16,
     flex: 1,
     marginLeft: 15,
@@ -258,59 +334,54 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 20,
+    padding: 15,
     gap: 10,
   },
   signOutText: {
-    color: '#ff4444',
     fontSize: 16,
     fontWeight: '800',
   },
-  editForm: {
-    backgroundColor: '#1a1a1a',
-    borderRadius: 25,
+  editSection: {
+    borderRadius: 20,
     padding: 20,
+    marginBottom: 40,
+  },
+  inputGroup: {
+    marginBottom: 20,
   },
   label: {
-    color: '#E8FB4B',
     fontSize: 12,
     fontWeight: '800',
     marginBottom: 8,
-    marginTop: 15,
+    textTransform: 'uppercase',
   },
   input: {
-    backgroundColor: '#262626',
-    borderRadius: 12,
-    padding: 15,
-    color: '#fff',
+    paddingVertical: 10,
     fontSize: 16,
-    borderWidth: 1,
-    borderColor: '#333',
+    borderBottomWidth: 1,
   },
   row: {
     flexDirection: 'row',
   },
-  buttonGroup: {
+  editActions: {
     flexDirection: 'row',
-    marginTop: 30,
+    marginTop: 10,
     gap: 15,
   },
   cancelButton: {
     flex: 1,
-    padding: 18,
+    padding: 15,
     borderRadius: 12,
-    backgroundColor: '#262626',
     alignItems: 'center',
+    borderWidth: 1,
   },
   saveButton: {
     flex: 1,
-    padding: 18,
+    padding: 15,
     borderRadius: 12,
-    backgroundColor: '#E8FB4B',
     alignItems: 'center',
   },
   cancelButtonText: {
-    color: '#fff',
     fontWeight: '700',
   },
   saveButtonText: {
@@ -318,9 +389,30 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   versionText: {
-    color: '#333',
     textAlign: 'center',
     fontSize: 12,
     marginTop: 20,
+  },
+  avatarImage: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 60,
+  },
+  uploadBadge: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 3,
+  },
+  changePhotoText: {
+    fontWeight: '800',
+    fontSize: 14,
+    marginTop: 10,
+    textTransform: 'uppercase',
   }
 });

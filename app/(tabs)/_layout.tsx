@@ -3,10 +3,12 @@ import { Tabs } from 'expo-router';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '@/src/lib/supabase';
+import { useSettings } from '@/src/context/SettingsContext';
 
 export default function TabLayout() {
   const colorScheme = useColorScheme();
   const [pendingRequests, setPendingRequests] = useState(0);
+  const { t } = useSettings();
 
   useEffect(() => {
     let isMounted = true;
@@ -66,21 +68,21 @@ export default function TabLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Inicio',
+          title: t('dashboard'),
           tabBarIcon: ({ color }) => <Ionicons name="home" size={24} color={color} />,
         }}
       />
       <Tabs.Screen
         name="calendar"
         options={{
-          title: 'Calendario',
+          title: t('calendar'),
           tabBarIcon: ({ color }) => <Ionicons name="calendar" size={24} color={color} />,
         }}
       />
       <Tabs.Screen
         name="social"
         options={{
-          title: 'Social',
+          title: t('social'),
           tabBarIcon: ({ color }) => <Ionicons name="people" size={24} color={color} />,
           tabBarBadge: pendingRequests > 0 ? '' : undefined,
           tabBarBadgeStyle: {
@@ -95,14 +97,14 @@ export default function TabLayout() {
       <Tabs.Screen
         name="explore"
         options={{
-          title: 'Ejercicios',
+          title: t('exercises'),
           tabBarIcon: ({ color }) => <Ionicons name="barbell" size={24} color={color} />,
         }}
       />
       <Tabs.Screen
         name="profile"
         options={{
-          title: 'Perfil',
+          title: t('profile'),
           tabBarIcon: ({ color }) => <Ionicons name="person" size={24} color={color} />,
         }}
       />

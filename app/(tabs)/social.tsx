@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TextInput, FlatList, TouchableOpacity, ActivityIndicator, Alert, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, TextInput, FlatList, TouchableOpacity, ActivityIndicator, Alert, ScrollView, Image } from 'react-native';
 import { supabase } from '@/src/lib/supabase';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+
+import { useSettings } from '@/src/context/SettingsContext';
 
 type SocialTab = 'buscar' | 'amigos' | 'solicitudes';
 
@@ -13,6 +15,7 @@ export default function SocialScreen() {
   const [friends, setFriends] = useState<any[]>([]);
   const [requests, setRequests] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
+  const { t, colors } = useSettings();
 
   useEffect(() => {
     if (activeTab === 'amigos') fetchFriends();
@@ -146,7 +149,7 @@ export default function SocialScreen() {
     // 3. Obtener perfiles de esos amigos
     const { data: profiles, error: pError } = await supabase
       .from('perfiles')
-      .select('id, nombre_usuario')
+      .select('id, nombre_usuario, url_avatar')
       .in('id', friendIds);
 
     if (pError) {
@@ -161,7 +164,8 @@ export default function SocialScreen() {
       const profile = profiles.find(p => p.id === friendId);
       return {
         ...relation,
-        displayUser: profile?.nombre_usuario || 'Usuario desconocido'
+        displayUser: profile?.nombre_usuario || 'Usuario desconocido',
+        url_avatar: profile?.url_avatar
       };
     });
 
@@ -202,7 +206,7 @@ export default function SocialScreen() {
     // 3. Obtener perfiles de los que envían
     const { data: profiles, error: pError } = await supabase
       .from('perfiles')
-      .select('id, nombre_usuario')
+      .select('id, nombre_usuario, url_avatar')
       .in('id', senderIds);
 
     if (pError) {
@@ -216,7 +220,8 @@ export default function SocialScreen() {
       const profile = profiles.find(p => p.id === relation.id_usuario);
       return {
         ...relation,
-        nombre_usuario: profile?.nombre_usuario || 'Alguien'
+        nombre_usuario: profile?.nombre_usuario || 'Alguien',
+        url_avatar: profile?.url_avatar
       };
     });
 
@@ -245,33 +250,33 @@ export default function SocialScreen() {
 
   const renderTabButton = (tab: SocialTab, title: string) => (
     <TouchableOpacity 
-      style={[styles.tabButton, activeTab === tab && styles.tabButtonActive]}
+      style={[styles.tabButton, { backgroundColor: colors.card }, activeTab === tab && { backgroundColor: colors.primary }]}
       onPress={() => setActiveTab(tab)}
     >
-      <Text style={[styles.tabButtonText, activeTab === tab && styles.tabButtonTextActive]}>{title}</Text>
+      <Text style={[styles.tabButtonText, { color: colors.secondary }, activeTab === tab && { color: colors.background }]}>{title}</Text>
     </TouchableOpacity>
   );
 
   return (
-    <View style={styles.container}>
-      <LinearGradient colors={['#1a1a1a', '#000']} style={styles.header}>
-        <Text style={styles.title}>Social</Text>
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <View style={[styles.header, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
+        <Text style={[styles.title, { color: colors.text }]}>Social</Text>
         <View style={styles.tabContainer}>
-          {renderTabButton('buscar', 'BUSCAR')}
-          {renderTabButton('amigos', `MIS AMIGOS (${friends.length})`)}
-          {renderTabButton('solicitudes', `SOLICITUDES (${requests.length})`)}
+          {renderTabButton('buscar', t('search').toUpperCase())}
+          {renderTabButton('amigos', `${t('my_friends').toUpperCase()} (${friends.length})`)}
+          {renderTabButton('solicitudes', `${t('requests').toUpperCase()} (${requests.length})`)}
         </View>
-      </LinearGradient>
+      </View>
 
       <View style={styles.content}>
         {activeTab === 'buscar' && (
           <View style={{ flex: 1 }}>
-            <View style={styles.searchBar}>
-              <Ionicons name="search" size={20} color="#666" style={styles.searchIcon} />
+            <View style={[styles.searchBar, { backgroundColor: colors.card }]}>
+              <Ionicons name="search" size={20} color={colors.muted} style={styles.searchIcon} />
               <TextInput
-                style={styles.searchInput}
-                placeholder="Busca guerreros por nickname..."
-                placeholderTextColor="#666"
+                style={[styles.searchInput, { color: colors.text }]}
+                placeholder={t('search_warriors')}
+                placeholderTextColor={colors.muted}
                 value={searchQuery}
                 onChangeText={setSearchQuery}
                 onSubmitEditing={searchUsers}
@@ -282,16 +287,22 @@ export default function SocialScreen() {
                 data={searchResults}
                 keyExtractor={(item) => item.id}
                 renderItem={({ item }) => (
-                  <View style={styles.userCard}>
-                    <View style={styles.avatarSmall}><Text style={styles.avatarLetter}>{item.nombre_usuario?.[0]}</Text></View>
-                    <Text style={styles.userName}>{item.nombre_usuario}</Text>
+                  <View style={[styles.userCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                    <View style={[styles.avatarSmall, { backgroundColor: colors.muted }]}>
+                      {item.url_avatar ? (
+                        <Image source={{ uri: item.url_avatar }} style={styles.avatarFull} />
+                      ) : (
+                        <Text style={[styles.avatarLetter, { color: colors.text }]}>{item.nombre_usuario?.[0]}</Text>
+                      )}
+                    </View>
+                    <Text style={[styles.userName, { color: colors.text }]}>{item.nombre_usuario}</Text>
                     {item.relation ? (
                       item.relation.estado === 'pendiente' ? (
-                        <View style={[styles.addButton, { backgroundColor: '#444' }]}>
+                        <View style={[styles.addButton, { backgroundColor: colors.muted }]}>
                           <Ionicons 
                             name={item.relation.id_usuario === item.id ? "person-add" : "help-circle"} 
                             size={20} 
-                            color="#fff" 
+                            color={colors.text} 
                           />
                         </View>
                       ) : (
@@ -300,8 +311,8 @@ export default function SocialScreen() {
                         </View>
                       )
                     ) : (
-                      <TouchableOpacity style={styles.addButton} onPress={() => sendFriendRequest(item.id)}>
-                        <Ionicons name="person-add" size={20} color="#000" />
+                      <TouchableOpacity style={[styles.addButton, { backgroundColor: colors.primary }]} onPress={() => sendFriendRequest(item.id)}>
+                        <Ionicons name="person-add" size={20} color={colors.background} />
                       </TouchableOpacity>
                     )}
                   </View>
@@ -319,11 +330,17 @@ export default function SocialScreen() {
             renderItem={({ item }) => {
               const displayUser = item.displayUser;
               return (
-                <View style={styles.userCard}>
-                   <View style={styles.avatarSmall}><Text style={styles.avatarLetter}>{displayUser?.[0]}</Text></View>
-                   <Text style={styles.userName}>{displayUser}</Text>
+                <View style={[styles.userCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                   <View style={[styles.avatarSmall, { backgroundColor: colors.muted }]}>
+                      {item.url_avatar ? (
+                        <Image source={{ uri: item.url_avatar }} style={styles.avatarFull} />
+                      ) : (
+                        <Text style={[styles.avatarLetter, { color: colors.text }]}>{displayUser?.[0]}</Text>
+                      )}
+                   </View>
+                   <Text style={[styles.userName, { color: colors.text }]}>{displayUser}</Text>
                    <TouchableOpacity onPress={() => removeFriend(item.id)}>
-                      <Ionicons name="trash-outline" size={20} color="#ff4444" />
+                      <Ionicons name="trash-outline" size={20} color={colors.error} />
                    </TouchableOpacity>
                 </View>
               );
@@ -338,7 +355,13 @@ export default function SocialScreen() {
             keyExtractor={(item) => item.id}
             renderItem={({ item }) => (
               <View style={styles.userCard}>
-                 <View style={styles.avatarSmall}><Text style={styles.avatarLetter}>{item.nombre_usuario?.[0]}</Text></View>
+                 <View style={styles.avatarSmall}>
+                    {item.url_avatar ? (
+                      <Image source={{ uri: item.url_avatar }} style={styles.avatarFull} />
+                    ) : (
+                      <Text style={styles.avatarLetter}>{item.nombre_usuario?.[0]}</Text>
+                    )}
+                 </View>
                  <Text style={styles.userName}>{item.nombre_usuario} te ha invitado</Text>
                  <View style={styles.actionRow}>
                    <TouchableOpacity style={styles.acceptButton} onPress={() => handleRequest(item.id, true)}>
@@ -374,6 +397,7 @@ const styles = StyleSheet.create({
   userCard: { backgroundColor: '#1a1a1a', padding: 15, borderRadius: 15, flexDirection: 'row', alignItems: 'center', marginBottom: 12, borderWidth: 1, borderColor: '#262626', gap: 15 },
   avatarSmall: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#333', alignItems: 'center', justifyContent: 'center' },
   avatarLetter: { color: '#fff', fontWeight: '800' },
+  avatarFull: { width: '100%', height: '100%', borderRadius: 20 },
   userName: { color: '#fff', fontSize: 16, fontWeight: '600', flex: 1 },
   addButton: { backgroundColor: '#E8FB4B', padding: 8, borderRadius: 10 },
   actionRow: { flexDirection: 'row', gap: 10 },

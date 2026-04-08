@@ -3,6 +3,7 @@ import { View, Text, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingVi
 import { useRouter } from 'expo-router';
 import { supabase } from '@/src/lib/supabase';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useSettings } from '@/src/context/SettingsContext';
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -13,6 +14,7 @@ export default function LoginScreen() {
   const [estatura, setEstatura] = useState('');
   const [loading, setLoading] = useState(false);
   const [isRegistering, setIsRegistering] = useState(false);
+  const { t, colors } = useSettings();
 
   async function handleAuth() {
     setLoading(true);
@@ -45,7 +47,7 @@ export default function LoginScreen() {
         }
         setLoading(false);
       } else {
-        Alert.alert('¡Éxito!', 'Cuenta creada. Por favor, revisa tu correo para confirmar (si es necesario).');
+        Alert.alert(t('success'), t('account_created'));
         router.replace('/(tabs)');
       }
     } else {
@@ -78,40 +80,40 @@ export default function LoginScreen() {
       style={styles.container}
     >
       <LinearGradient
-        colors={['#1a1a1a', '#000000']}
+        colors={[colors.card, colors.background]}
         style={styles.background}
       />
       
       <View style={styles.formContainer}>
-        <Text style={styles.title}>GYM PRO</Text>
-        <Text style={styles.subtitle}>
-          {isRegistering ? 'Crea tu cuenta para empezar' : 'Bienvenido de nuevo, guerrero'}
+        <Text style={[styles.title, { color: colors.text }]}>GYM PRO</Text>
+        <Text style={[styles.subtitle, { color: colors.secondary }]}>
+          {isRegistering ? t('create_account_subtitle') : t('welcome_subtitle')}
         </Text>
 
         <View style={styles.inputGroup}>
           {isRegistering && (
             <>
               <TextInput
-                style={styles.input}
-                placeholder="Nombre de usuario (Nickname)"
-                placeholderTextColor="#666"
+                style={[styles.input, { backgroundColor: colors.card, color: colors.text, borderColor: colors.border }]}
+                placeholder={t('nickname')}
+                placeholderTextColor={colors.muted}
                 value={nickname}
                 onChangeText={setNickname}
                 autoCapitalize="none"
               />
               <View style={styles.row}>
                 <TextInput
-                  style={[styles.input, { flex: 1, marginRight: 10 }]}
-                  placeholder="Peso (kg)"
-                  placeholderTextColor="#666"
+                  style={[styles.input, { flex: 1, marginRight: 10, backgroundColor: colors.card, color: colors.text, borderColor: colors.border }]}
+                  placeholder={`${t('weight')} (kg)`}
+                  placeholderTextColor={colors.muted}
                   value={peso}
                   onChangeText={setPeso}
                   keyboardType="numeric"
                 />
                 <TextInput
-                  style={[styles.input, { flex: 1 }]}
-                  placeholder="Estatura (cm)"
-                  placeholderTextColor="#666"
+                  style={[styles.input, { flex: 1, backgroundColor: colors.card, color: colors.text, borderColor: colors.border }]}
+                  placeholder={`${t('height')} (cm)`}
+                  placeholderTextColor={colors.muted}
                   value={estatura}
                   onChangeText={setEstatura}
                   keyboardType="numeric"
@@ -120,9 +122,9 @@ export default function LoginScreen() {
             </>
           )}
           <TextInput
-            style={styles.input}
-            placeholder="Correo electrónico"
-            placeholderTextColor="#666"
+            style={[styles.input, { backgroundColor: colors.card, color: colors.text, borderColor: colors.border }]}
+            placeholder={t('email')}
+            placeholderTextColor={colors.muted}
             value={email}
             onChangeText={setEmail}
             autoCapitalize="none"
@@ -130,9 +132,9 @@ export default function LoginScreen() {
             autoCorrect={false}
           />
           <TextInput
-            style={styles.input}
-            placeholder="Contraseña"
-            placeholderTextColor="#666"
+            style={[styles.input, { backgroundColor: colors.card, color: colors.text, borderColor: colors.border }]}
+            placeholder={t('password')}
+            placeholderTextColor={colors.muted}
             value={password}
             onChangeText={setPassword}
             secureTextEntry
@@ -140,24 +142,24 @@ export default function LoginScreen() {
         </View>
 
         <TouchableOpacity 
-          style={styles.button} 
+          style={[styles.button, { backgroundColor: colors.primary }]} 
           onPress={handleAuth}
           disabled={loading}
         >
           {loading ? (
-            <ActivityIndicator color="#fff" />
+            <ActivityIndicator color={colors.background} />
           ) : (
-            <Text style={styles.buttonText}>
-              {isRegistering ? 'Registrarse' : 'Iniciar Sesión'}
+            <Text style={[styles.buttonText, { color: colors.background }]}>
+              {isRegistering ? t('register') : t('login')}
             </Text>
           )}
         </TouchableOpacity>
 
         <TouchableOpacity onPress={() => setIsRegistering(!isRegistering)}>
-          <Text style={styles.switchText}>
+          <Text style={[styles.switchText, { color: colors.secondary }]}>
             {isRegistering 
-              ? '¿Ya tienes cuenta? Inicia sesión' 
-              : '¿No tienes cuenta? Registrate gratis'}
+              ? t('already_have_account') 
+              : t('no_account')}
           </Text>
         </TouchableOpacity>
       </View>
