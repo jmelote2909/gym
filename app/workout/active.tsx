@@ -12,6 +12,9 @@ interface Set {
   id: string;
   weight: string;
   reps: string;
+  minutes?: string;
+  seconds?: string;
+  distance?: string;
 }
 
 interface ExerciseLog {
@@ -19,6 +22,7 @@ interface ExerciseLog {
   exerciseId: string;
   name: string;
   previousWeight?: number;
+  isCardio?: boolean;
   sets: Set[];
 }
 
@@ -75,12 +79,15 @@ export default function ActiveWorkoutScreen() {
       .limit(1)
       .single();
 
+    const isCardio = exercise.categoria?.toLowerCase() === 'cardio' || exercise.musculo_principal?.toLowerCase() === 'cardio';
+
     const newLog: ExerciseLog = {
       id: Math.random().toString(36).substr(2, 9),
       exerciseId: exercise.id,
       name: exercise.nombre,
       previousWeight: userEx?.peso || 0,
-      sets: [{ id: Math.random().toString(), weight: '', reps: '' }]
+      isCardio,
+      sets: [{ id: Math.random().toString(), weight: '', reps: '', minutes: '', seconds: '', distance: '' }]
     };
     setExerciseLogs([...exerciseLogs, newLog]);
     setIsModalVisible(false);
@@ -94,11 +101,19 @@ export default function ActiveWorkoutScreen() {
 
   function addSet(exerciseIndex: number) {
     const newLogs = [...exerciseLogs];
-    newLogs[exerciseIndex].sets.push({ id: Math.random().toString(), weight: '', reps: '' });
+    const prevSet = newLogs[exerciseIndex].sets[newLogs[exerciseIndex].sets.length - 1];
+    newLogs[exerciseIndex].sets.push({ 
+      id: Math.random().toString(), 
+      weight: prevSet?.weight || '', 
+      reps: prevSet?.reps || '',
+      minutes: prevSet?.minutes || '',
+      seconds: prevSet?.seconds || '',
+      distance: prevSet?.distance || ''
+    });
     setExerciseLogs(newLogs);
   }
 
-  function updateSet(exerciseIndex: number, setIndex: number, field: 'weight' | 'reps', value: string) {
+  function updateSet(exerciseIndex: number, setIndex: number, field: keyof Set, value: string) {
     const newLogs = [...exerciseLogs];
     newLogs[exerciseIndex].sets[setIndex][field] = value;
     setExerciseLogs(newLogs);
@@ -135,8 +150,11 @@ export default function ActiveWorkoutScreen() {
       log.sets.map(set => ({
         id_entrenamiento: workout.id,
         id_ejercicio: log.exerciseId,
-        peso: parseFloat(set.weight) || 0,
-        repeticiones: parseInt(set.reps) || 0
+        peso: log.isCardio ? 0 : (parseFloat(set.weight) || 0),
+        repeticiones: log.isCardio ? 0 : (parseInt(set.reps) || 0),
+        tiempo_minutos: log.isCardio ? (parseInt(set.minutes || '0') || 0) : null,
+        tiempo_segundos: log.isCardio ? (parseInt(set.seconds || '0') || 0) : null,
+        distancia_km: log.isCardio ? (parseFloat(set.distance || '0') || null) : null,
       }))
     );
 
@@ -273,8 +291,18 @@ export default function ActiveWorkoutScreen() {
             
             <View style={styles.setRowHeader}>
               <Text style={[styles.setHeaderText, { color: colors.muted }]}>{t('set').toUpperCase()}</Text>
-              <Text style={[styles.setHeaderText, { color: colors.muted }]}>KG</Text>
-              <Text style={[styles.setHeaderText, { color: colors.muted }]}>REPS</Text>
+              {!log.isCardio ? (
+                 <>
+                   <Text style={[styles.setHeaderText, { color: colors.muted }]}>KG</Text>
+                   <Text style={[styles.setHeaderText, { color: colors.muted }]}>REPS</Text>
+                 </>
+              ) : (
+                 <>
+                   <Text style={[styles.setHeaderText, { color: colors.muted }]}>MIN</Text>
+                   <Text style={[styles.setHeaderText, { color: colors.muted }]}>SEG</Text>
+                   <Text style={[styles.setHeaderText, { color: colors.muted }]}>KM (Opc)</Text>
+                 </>
+              )}
             </View>
 
             {log.sets.map((set, setIdx) => (
@@ -282,22 +310,53 @@ export default function ActiveWorkoutScreen() {
                 <View style={[styles.setNumberBadge, { backgroundColor: colors.background }]}>
                   <Text style={[styles.setNumberText, { color: colors.secondary }]}>{setIdx + 1}</Text>
                 </View>
-                <TextInput
-                  style={[styles.setInput, { backgroundColor: colors.background, color: colors.text }]}
-                  keyboardType="numeric"
-                  placeholder="0"
-                  placeholderTextColor={colors.muted}
-                  value={set.weight}
-                  onChangeText={(val) => updateSet(exIdx, setIdx, 'weight', val)}
-                />
-                <TextInput
-                  style={[styles.setInput, { backgroundColor: colors.background, color: colors.text }]}
-                  keyboardType="numeric"
-                  placeholder="0"
-                  placeholderTextColor={colors.muted}
-                  value={set.reps}
-                  onChangeText={(val) => updateSet(exIdx, setIdx, 'reps', val)}
-                />
+                {!log.isCardio ? (
+                  <>
+                    <TextInput
+                      style={[styles.setInput, { backgroundColor: colors.background, color: colors.text }]}
+                      keyboardType="numeric"
+                      placeholder="0"
+                      placeholderTextColor={colors.muted}
+                      value={set.weight}
+                      onChangeText={(val) => updateSet(exIdx, setIdx, 'weight', val)}
+                    />
+                    <TextInput
+                      style={[styles.setInput, { backgroundColor: colors.background, color: colors.text }]}
+                      keyboardType="numeric"
+                      placeholder="0"
+                      placeholderTextColor={colors.muted}
+                      value={set.reps}
+                      onChangeText={(val) => updateSet(exIdx, setIdx, 'reps', val)}
+                    />
+                  </>
+                ) : (
+                  <>
+                    <TextInput
+                      style={[styles.setInput, { backgroundColor: colors.background, color: colors.text }]}
+                      keyboardType="numeric"
+                      placeholder="0"
+                      placeholderTextColor={colors.muted}
+                      value={set.minutes}
+                      onChangeText={(val) => updateSet(exIdx, setIdx, 'minutes', val)}
+                    />
+                    <TextInput
+                      style={[styles.setInput, { backgroundColor: colors.background, color: colors.text }]}
+                      keyboardType="numeric"
+                      placeholder="0"
+                      placeholderTextColor={colors.muted}
+                      value={set.seconds}
+                      onChangeText={(val) => updateSet(exIdx, setIdx, 'seconds', val)}
+                    />
+                    <TextInput
+                      style={[styles.setInput, { backgroundColor: colors.background, color: colors.text }]}
+                      keyboardType="numeric"
+                      placeholder="-"
+                      placeholderTextColor={colors.muted}
+                      value={set.distance}
+                      onChangeText={(val) => updateSet(exIdx, setIdx, 'distance', val)}
+                    />
+                  </>
+                )}
               </View>
             ))}
 
