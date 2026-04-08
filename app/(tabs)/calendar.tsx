@@ -106,6 +106,9 @@ export default function CalendarScreen() {
         id,
         peso,
         repeticiones,
+        tiempo_minutos,
+        tiempo_segundos,
+        distancia_km,
         catalogo_ejercicios (
           nombre
         )
@@ -307,13 +310,29 @@ export default function CalendarScreen() {
                   <View key={idx} style={[styles.summaryExerciseCard, { backgroundColor: colors.muted + '20', borderColor: colors.border }]}>
                     <Text style={[styles.summaryExerciseName, { color: colors.text }]}>{item.name}</Text>
                     <View style={styles.summarySetsGrid}>
-                      {item.sets.map((set: any, sIdx: number) => (
-                        <View key={set.id} style={[styles.summarySetRow, { backgroundColor: colors.muted + '40' }]}>
-                          <Text style={[styles.summarySetNum, { color: colors.secondary }]}>{sIdx + 1}</Text>
-                          <Text style={[styles.summarySetWeight, { color: colors.text }]}>{set.peso} kg</Text>
-                          <Text style={[styles.summarySetReps, { color: colors.secondary }]}>{set.repeticiones} reps</Text>
-                        </View>
-                      ))}
+                      {item.sets.map((set: any, sIdx: number) => {
+                        const isCardio = set.tiempo_minutos != null || set.tiempo_segundos != null || set.distancia_km != null;
+                        return (
+                          <View key={set.id} style={[styles.summarySetRow, { backgroundColor: colors.muted + '40' }]}>
+                            <Text style={[styles.summarySetNum, { color: colors.secondary }]}>{sIdx + 1}</Text>
+                            {!isCardio ? (
+                              <>
+                                <Text style={[styles.summarySetWeight, { color: colors.text }]}>{set.peso} kg</Text>
+                                <Text style={[styles.summarySetReps, { color: colors.secondary }]}>{set.repeticiones} reps</Text>
+                              </>
+                            ) : (
+                              <>
+                                <Text style={[styles.summarySetWeight, { color: colors.text }]}>
+                                  {set.tiempo_minutos || 0}:{String(set.tiempo_segundos || 0).padStart(2, '0')} min
+                                </Text>
+                                {set.distancia_km ? (
+                                  <Text style={[styles.summarySetReps, { color: colors.secondary }]}>{set.distancia_km} km</Text>
+                                ) : null}
+                              </>
+                            )}
+                          </View>
+                        );
+                      })}
                     </View>
                   </View>
                 ))}
