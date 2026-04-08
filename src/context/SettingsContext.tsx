@@ -134,7 +134,46 @@ const translations: Record<Language, Record<string, string>> = {
     sunday: 'Domingo',
     no_notifications: 'No tienes notificaciones aún',
     no_friends_activity: 'Aún no hay actividad de tus amigos hoy. ¡Anímalos a entrenar!',
-    search_warriors: 'Busca guerreros por nickname...'
+    search_warriors: 'Busca guerreros por nickname...',
+    search_min_chars: 'Escribe al menos 2 letras',
+    no_friends_added: 'Aún no tienes amigos agregados.',
+    no_pending_requests: 'No tienes solicitudes pendientes.',
+    search_exercises: 'Busca ejercicios...',
+    // Catálogo
+    abdominales: 'Abdominales',
+    bíceps: 'Bíceps',
+    pecho: 'Pecho',
+    piernas: 'Piernas',
+    espalda: 'Espalda',
+    hombros: 'Hombros',
+    tríceps: 'Tríceps',
+    glúteos: 'Glúteos',
+    isquios: 'Isquios',
+    gemelos: 'Gemelos',
+    antebrazos: 'Antebrazos',
+    cardio: 'Cardio',
+    'cuerpo entero': 'Cuerpo entero',
+    cuádriceps: 'Cuádriceps',
+    'espalda superior': 'Espalda superior',
+    'espalda baja': 'Espalda baja',
+    isquiotibiales: 'Isquiotibiales',
+    hombro: 'Hombro',
+    dorsales: 'Dorsales',
+    trapecio: 'Trapecio',
+    aductores: 'Aductores',
+    adductores: 'Aductores',
+    mancuerna: 'Mancuerna',
+    barra: 'Barra',
+    máquina: 'Máquina',
+    cable: 'Cable',
+    polea: 'Polea',
+    banda: 'Banda',
+    suspensión: 'Suspensión',
+    'pesa rusa': 'Pesa rusa',
+    'máquina smith': 'Máquina Smith',
+    'barra ez': 'Barra EZ',
+    'barra trap': 'Barra Trap',
+    'peso corporal': 'Peso corporal'
   },
   en: {
     dashboard: 'Home',
@@ -224,7 +263,46 @@ const translations: Record<Language, Record<string, string>> = {
     sunday: 'Sunday',
     no_notifications: 'No notifications yet',
     no_friends_activity: 'No activity from your friends today. Encourage them to train!',
-    search_warriors: 'Search warriors by nickname...'
+    search_warriors: 'Search warriors by nickname...',
+    search_min_chars: 'Write at least 2 letters',
+    no_friends_added: 'No friends added yet.',
+    no_pending_requests: 'No pending requests.',
+    search_exercises: 'Search exercises...',
+    // Catalog
+    abdominales: 'Abs',
+    bíceps: 'Biceps',
+    pecho: 'Chest',
+    piernas: 'Legs',
+    espalda: 'Back',
+    hombros: 'Shoulders',
+    tríceps: 'Triceps',
+    glúteos: 'Glutes',
+    isquios: 'Hamstrings',
+    gemelos: 'Calves',
+    antebrazos: 'Forearms',
+    cardio: 'Cardio',
+    'cuerpo entero': 'Full Body',
+    cuádriceps: 'Quads',
+    'espalda superior': 'Upper Back',
+    'espalda baja': 'Lower Back',
+    isquiotibiales: 'Hamstrings',
+    hombro: 'Shoulder',
+    dorsales: 'Lats',
+    trapecio: 'Traps',
+    aductores: 'Adductors',
+    adductores: 'Adductors',
+    mancuerna: 'Dumbbell',
+    barra: 'Barbell',
+    máquina: 'Machine',
+    cable: 'Cable',
+    polea: 'Pulley',
+    banda: 'Band',
+    suspensión: 'Suspension',
+    'pesa rusa': 'Kettlebell',
+    'máquina smith': 'Smith Machine',
+    'barra ez': 'EZ Bar',
+    'barra trap': 'Trap Bar',
+    'peso corporal': 'Bodyweight'
   }
 };
 
@@ -256,7 +334,9 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   };
 
   const t = (key: string) => {
-    return translations[language][key] || key;
+    if (!key) return '';
+    const cleanKey = key.toLowerCase().trim();
+    return translations[language][cleanKey] || translations[language][key] || key;
   };
 
   const colors = themeColors[theme];

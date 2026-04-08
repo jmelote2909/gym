@@ -288,7 +288,7 @@ export default function Dashboard() {
         <View style={[styles.header, { borderBottomColor: colors.border }]}>
           <View>
             <Text style={[styles.greeting, { color: colors.secondary }]}>{t('dashboard')}</Text>
-            <Text style={[styles.name, { color: colors.text }]}>{userName || 'Guerrero'} 🔥</Text>
+            <Text style={[styles.name, { color: colors.text }]}>{userName || 'Guerrero'}</Text>
           </View>
           <View style={styles.headerActions}>
             <TouchableOpacity 

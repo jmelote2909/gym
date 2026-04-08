@@ -8,7 +8,6 @@ export default function ExercisesScreen() {
   const [modalVisible, setModalVisible] = useState(false);
   const [newExerciseName, setNewExerciseName] = useState('');
   const [newExerciseWeight, setNewExerciseWeight] = useState('');
-  const [selectedDays, setSelectedDays] = useState<string[]>([]);
   const [isEditing, setIsEditing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedMuscle, setSelectedMuscle] = useState<string | null>(null);
@@ -17,7 +16,6 @@ export default function ExercisesScreen() {
   const [muscles, setMuscles] = useState<string[]>(['Todos']);
   const { t, colors } = useSettings();
 
-  const DAY_NAMES_ES = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
 
   useEffect(() => {
     fetchMuscles();
@@ -83,12 +81,11 @@ export default function ExercisesScreen() {
     setNewExerciseName(item.nombre);
     setModalVisible(true);
     setIsEditing(false);
-    setSelectedDays([]);
   }
 
   async function addExercise() {
-    if (!newExerciseName || selectedDays.length === 0) {
-      Alert.alert('Incompleto', 'Por favor, añade un nombre y al menos un día.');
+    if (!newExerciseName) {
+      Alert.alert('Incompleto', 'Por favor, añade un nombre.');
       return;
     }
 
@@ -99,7 +96,6 @@ export default function ExercisesScreen() {
       { 
         nombre: newExerciseName, 
         peso: parseFloat(newExerciseWeight) || 0,
-        dias_semana: selectedDays,
         id_usuario: user.id 
       }
     ]);
@@ -115,23 +111,10 @@ export default function ExercisesScreen() {
   function closeModal() {
     setNewExerciseName('');
     setNewExerciseWeight('');
-    setSelectedDays([]);
     setModalVisible(false);
     setIsEditing(false);
   }
 
-  const getLocalizedDay = (index: number) => {
-    const keys = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
-    return t(keys[index]);
-  };
-
-  const toggleDay = (dayNameEs: string) => {
-    setSelectedDays(current => 
-      current.includes(dayNameEs) 
-        ? current.filter(d => d !== dayNameEs) 
-        : [...current, dayNameEs]
-    );
-  };
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -143,7 +126,7 @@ export default function ExercisesScreen() {
             <Ionicons name="search" size={20} color={colors.muted} />
             <TextInput
               style={[styles.searchInput, { color: colors.text }]}
-              placeholder="Busca ejercicios..."
+              placeholder={t('search_exercises')}
               placeholderTextColor={colors.muted}
               value={searchQuery}
               onChangeText={searchExercises}
@@ -171,7 +154,7 @@ export default function ExercisesScreen() {
                 { color: colors.secondary },
                 (selectedMuscle === muscle || (muscle === 'Todos' && selectedMuscle === null)) && { color: colors.background }
               ]}>
-                {muscle}
+                {t(muscle)}
               </Text>
             </TouchableOpacity>
           ))}
@@ -192,7 +175,7 @@ export default function ExercisesScreen() {
                   <View style={{ flex: 1 }}>
                     <Text style={[styles.exerciseName, { color: colors.text }]}>{item.nombre}</Text>
                     <Text style={[styles.exerciseDetails, { color: colors.secondary }]}>
-                      {item.musculo_principal} • {item.equipamiento}
+                      {t(item.musculo_principal)} • {t(item.equipamiento)}
                     </Text>
                   </View>
                   <View style={[styles.adoptIcon, { backgroundColor: colors.primary }]}>
@@ -247,20 +230,6 @@ export default function ExercisesScreen() {
               onChangeText={setNewExerciseWeight}
             />
 
-            <Text style={[styles.daySelectorTitle, { color: colors.secondary }]}>{t('days_of_week')}:</Text>
-            <View style={styles.daySelector}>
-              {DAY_NAMES_ES.map((dayNameEs, index) => (
-                <TouchableOpacity 
-                  key={dayNameEs}
-                  style={[styles.dayBubble, { backgroundColor: colors.background, borderColor: colors.border }, selectedDays.includes(dayNameEs) && { backgroundColor: colors.primary, borderColor: colors.primary }]}
-                  onPress={() => toggleDay(dayNameEs)}
-                >
-                  <Text style={[styles.dayBubbleText, { color: colors.secondary }, selectedDays.includes(dayNameEs) && { color: colors.background }]}>
-                    {getLocalizedDay(index).substring(0, 1)}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
 
             <View style={styles.modalButtons}>
               <TouchableOpacity 
@@ -428,27 +397,5 @@ const styles = StyleSheet.create({
   },
   saveButtonText: {
     fontWeight: '700',
-  },
-  daySelectorTitle: {
-    fontSize: 14,
-    marginBottom: 10,
-    marginLeft: 5,
-  },
-  daySelector: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 25,
-  },
-  dayBubble: {
-    width: 35,
-    height: 35,
-    borderRadius: 17.5,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-  },
-  dayBubbleText: {
-    fontWeight: '800',
-    fontSize: 12,
   },
 });

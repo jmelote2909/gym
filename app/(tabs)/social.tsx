@@ -317,7 +317,7 @@ export default function SocialScreen() {
                     )}
                   </View>
                 )}
-                ListEmptyComponent={<Text style={styles.emptyText}>{searchQuery.length < 2 ? 'Escribe al menos 2 letras' : 'No se han encontrado usuarios'}</Text>}
+                ListEmptyComponent={<Text style={styles.emptyText}>{searchQuery.length < 2 ? t('search_min_chars') : t('no_results_found')}</Text>}
               />
             )}
           </View>
@@ -345,7 +345,7 @@ export default function SocialScreen() {
                 </View>
               );
             }}
-            ListEmptyComponent={<Text style={styles.emptyText}>Aún no tienes amigos agregados.</Text>}
+            ListEmptyComponent={<Text style={styles.emptyText}>{t('no_friends_added')}</Text>}
           />
         )}
 
@@ -373,7 +373,7 @@ export default function SocialScreen() {
                  </View>
               </View>
             )}
-            ListEmptyComponent={<Text style={styles.emptyText}>No tienes solicitudes pendientes.</Text>}
+            ListEmptyComponent={<Text style={styles.emptyText}>{t('no_pending_requests')}</Text>}
           />
         )}
       </View>
