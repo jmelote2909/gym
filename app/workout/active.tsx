@@ -32,6 +32,10 @@ export default function ActiveWorkoutScreen() {
   const [filteredExercises, setFilteredExercises] = useState<any[]>([]);
   const [muscles, setMuscles] = useState<string[]>(['Todos']);
   const [selectedMuscle, setSelectedMuscle] = useState('Todos');
+  const [notesModalVisible, setNotesModalVisible] = useState(false);
+  const [workoutNote, setWorkoutNote] = useState('');
+  const [moodSelected, setMoodSelected] = useState<string | null>(null);
+  const [energyLevel, setEnergyLevel] = useState(3);
   const { t, colors } = useSettings();
 
   useEffect(() => {
@@ -105,7 +109,12 @@ export default function ActiveWorkoutScreen() {
       Alert.alert(t('empty_workout'), t('add_exercise_hint'));
       return;
     }
+    // Show notes modal first
+    setNotesModalVisible(true);
+  }
 
+  async function saveWorkout() {
+    setNotesModalVisible(false);
     setLoading(true);
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
@@ -199,6 +208,18 @@ export default function ActiveWorkoutScreen() {
         }).eq('id', user.id);
       }
 
+      // 5. Save workout notes if provided
+      if (workoutNote.trim() || moodSelected) {
+        try {
+          await supabase.from('notas_entrenamiento').insert([{
+            id_entrenamiento: workout.id,
+            nota: workoutNote.trim() || '',
+            estado_animo: moodSelected,
+            nivel_energia: energyLevel,
+          }]);
+        } catch (_) {} // Non-blocking
+      }
+
       setLoading(false);
       Alert.alert(t('success'), t('workout_saved_subtitle'), [
         { text: 'OK', onPress: () => router.replace('/(tabs)') }
@@ -287,6 +308,68 @@ export default function ActiveWorkoutScreen() {
           <Text style={[styles.addExerciseText, { color: colors.background }]}>{t('add_exercise').toUpperCase()}</Text>
         </TouchableOpacity>
       </ScrollView>
+
+      {/* Notes Modal */}
+      <Modal visible={notesModalVisible} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>¿Cómo fue el entreno?</Text>
+              <TouchableOpacity onPress={() => setNotesModalVisible(false)}>
+                <Ionicons name="close" size={24} color={colors.text} />
+              </TouchableOpacity>
+            </View>
+
+            {/* Mood selector */}
+            <Text style={[styles.notesLabel, { color: colors.secondary }]}>Estado de ánimo</Text>
+            <View style={styles.moodRow}>
+              {[{ icon: '😫', key: 'mal' }, { icon: '😔', key: 'cansado' }, { icon: '😐', key: 'normal' }, { icon: '😊', key: 'bien' }, { icon: '🔥', key: 'excelente' }].map(m => (
+                <TouchableOpacity
+                  key={m.key}
+                  style={[styles.moodBtn, moodSelected === m.key && { backgroundColor: colors.primary + '30', borderColor: colors.primary, borderWidth: 2 }]}
+                  onPress={() => setMoodSelected(moodSelected === m.key ? null : m.key)}
+                >
+                  <Text style={styles.moodEmoji}>{m.icon}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            {/* Energy level */}
+            <Text style={[styles.notesLabel, { color: colors.secondary }]}>Nivel de energía: {energyLevel}/5</Text>
+            <View style={styles.energyRow}>
+              {[1,2,3,4,5].map(n => (
+                <TouchableOpacity
+                  key={n}
+                  style={[styles.energyBtn, { backgroundColor: n <= energyLevel ? colors.primary : colors.background }]}
+                  onPress={() => setEnergyLevel(n)}
+                />
+              ))}
+            </View>
+
+            {/* Notes text */}
+            <Text style={[styles.notesLabel, { color: colors.secondary }]}>Notas (opcional)</Text>
+            <TextInput
+              style={[styles.notesInput, { backgroundColor: colors.background, color: colors.text, borderColor: colors.border }]}
+              placeholder="¿Algo que destacar de hoy?"
+              placeholderTextColor={colors.muted}
+              value={workoutNote}
+              onChangeText={setWorkoutNote}
+              multiline
+              numberOfLines={3}
+            />
+
+            <TouchableOpacity
+              style={[styles.saveBtn, { backgroundColor: colors.primary }]}
+              onPress={saveWorkout}
+            >
+              <Text style={[styles.saveBtnText, { color: colors.background }]}>Guardar Entrenamiento</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={saveWorkout} style={styles.skipBtn}>
+              <Text style={[styles.skipText, { color: colors.muted }]}>Saltar y guardar</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
 
       <Modal visible={isModalVisible} animationType="slide" transparent={true}>
         <View style={styles.modalOverlay}>
@@ -555,5 +638,63 @@ const styles = StyleSheet.create({
   previousWeightText: {
     fontSize: 11,
     fontWeight: '800',
-  }
+  },
+  notesLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    marginBottom: 10,
+    marginTop: 16,
+  },
+  moodRow: {
+    flexDirection: 'row',
+    gap: 10,
+    justifyContent: 'space-between',
+  },
+  moodBtn: {
+    flex: 1,
+    alignItems: 'center',
+    padding: 10,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  moodEmoji: {
+    fontSize: 28,
+  },
+  energyRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  energyBtn: {
+    flex: 1,
+    height: 10,
+    borderRadius: 5,
+  },
+  notesInput: {
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 14,
+    fontSize: 14,
+    minHeight: 80,
+    textAlignVertical: 'top',
+    marginBottom: 20,
+  },
+  saveBtn: {
+    padding: 18,
+    borderRadius: 16,
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  saveBtnText: {
+    fontSize: 16,
+    fontWeight: '900',
+  },
+  skipBtn: {
+    alignItems: 'center',
+    padding: 10,
+  },
+  skipText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
 });

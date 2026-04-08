@@ -396,6 +396,43 @@ export default function Dashboard() {
           </View>
         )}
 
+        {/* Quick Access to New Features */}
+        <View style={styles.sectionHeader}>
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>Herramientas</Text>
+        </View>
+        <View style={styles.toolsGrid}>
+          <TouchableOpacity
+            style={[styles.toolCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+            onPress={() => router.push('/achievements' as any)}
+          >
+            <View style={[styles.toolIcon, { backgroundColor: '#FFD60020' }]}>
+              <Ionicons name="trophy" size={24} color="#FFD600" />
+            </View>
+            <Text style={[styles.toolLabel, { color: colors.text }]}>Logros</Text>
+            <Text style={[styles.toolSub, { color: colors.secondary }]}>Tus méritos</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.toolCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+            onPress={() => router.push('/routines' as any)}
+          >
+            <View style={[styles.toolIcon, { backgroundColor: colors.primary + '20' }]}>
+              <Ionicons name="list" size={24} color={colors.primary} />
+            </View>
+            <Text style={[styles.toolLabel, { color: colors.text }]}>Rutinas</Text>
+            <Text style={[styles.toolSub, { color: colors.secondary }]}>Plantillas</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.toolCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+            onPress={() => router.push('/progress' as any)}
+          >
+            <View style={[styles.toolIcon, { backgroundColor: '#00C89620' }]}>
+              <Ionicons name="trending-up" size={24} color="#00C896" />
+            </View>
+            <Text style={[styles.toolLabel, { color: colors.text }]}>Progreso</Text>
+            <Text style={[styles.toolSub, { color: colors.secondary }]}>Gráficas</Text>
+          </TouchableOpacity>
+        </View>
+
       </ScrollView>
     </SafeAreaView>
   );
@@ -650,5 +687,35 @@ const styles = StyleSheet.create({
   friendStatus: {
     fontSize: 12,
     marginTop: 2,
+  },
+  toolsGrid: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 30,
+  },
+  toolCard: {
+    flex: 1,
+    borderRadius: 18,
+    borderWidth: 1,
+    padding: 16,
+    alignItems: 'center',
+    gap: 8,
+  },
+  toolIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  toolLabel: {
+    fontSize: 13,
+    fontWeight: '800',
+    textAlign: 'center',
+  },
+  toolSub: {
+    fontSize: 10,
+    fontWeight: '600',
+    textAlign: 'center',
   },
 });
