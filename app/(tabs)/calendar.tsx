@@ -106,7 +106,7 @@ export default function CalendarScreen() {
         id,
         peso,
         repeticiones,
-        ejercicios (
+        catalogo_ejercicios (
           nombre
         )
       `)
@@ -119,7 +119,7 @@ export default function CalendarScreen() {
       // Group by exercise name
       const grouped: any = {};
       data?.forEach((set: any) => {
-        const exerciseName = set.ejercicios?.nombre || 'Ejercicio desconocido';
+        const exerciseName = set.catalogo_ejercicios?.nombre || 'Ejercicio desconocido';
         if (!grouped[exerciseName]) {
           grouped[exerciseName] = [];
         }
