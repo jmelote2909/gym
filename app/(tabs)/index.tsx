@@ -98,7 +98,6 @@ export default function Dashboard() {
 
     // We'll schedule notifications after fetching the user profile to use their name
   }
-  }
 
   useFocusEffect(
     useCallback(() => {
