@@ -12,6 +12,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { syncPendingWorkouts, hasPendingWorkouts } from '@/src/lib/offlineSync';
 import { requestNotificationPermissions, scheduleTrainingReminder } from '@/src/lib/notifications';
+import * as Notifications from 'expo-notifications';
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -197,6 +198,17 @@ export default function Dashboard() {
                 if (isMounted) {
                   setHasNewAlert(true);
                   setCurrentBannerMessage(payload.new.mensaje);
+
+                  // Trigger local notification
+                  Notifications.scheduleNotificationAsync({
+                    content: {
+                      title: "Nueva Alerta Admin 📢",
+                      body: payload.new.mensaje,
+                      sound: true,
+                    },
+                    trigger: null,
+                  });
+
                   bannerTranslateY.value = withTiming(0, { duration: 500 });
                   bannerOpacity.value = withTiming(1, { duration: 500 });
 
@@ -222,6 +234,17 @@ export default function Dashboard() {
               setHasNewAlert(true);
               
               setCurrentBannerMessage(latestAlert.mensaje);
+
+              // Trigger local notification
+              Notifications.scheduleNotificationAsync({
+                content: {
+                  title: "Nueva Alerta Admin 📢",
+                  body: latestAlert.mensaje,
+                  sound: true,
+                },
+                trigger: null,
+              });
+
               bannerTranslateY.value = withTiming(0, { duration: 500 });
               bannerOpacity.value = withTiming(1, { duration: 500 });
 

@@ -5,6 +5,15 @@ import { StatusBar } from 'expo-status-bar';
 import 'react-native-reanimated';
 import { supabase } from '@/src/lib/supabase';
 import { Session } from '@supabase/supabase-js';
+import * as Notifications from 'expo-notifications';
+
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: false,
+  }),
+});
 
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { SettingsProvider } from '@/src/context/SettingsContext';
@@ -59,7 +68,34 @@ export default function RootLayout() {
     } else if (session && inAuthGroup) {
       router.replace('/(tabs)');
     }
+
+    if (session) {
+      scheduleDailyReminder();
+    }
   }, [session, initialized, segments]);
+
+  async function scheduleDailyReminder() {
+    try {
+      // Limpiamos programaciones previas para no duplicar
+      await Notifications.cancelAllScheduledNotificationsAsync();
+      
+      // Programar para las 09:20 cada día
+      await Notifications.scheduleNotificationAsync({
+        content: {
+          title: "¡No pierdas tu racha! 🔥",
+          body: "Aún no has entrenado hoy. Entrena ahora para mantener tu racha y tus vidas intactas.",
+          sound: true,
+        },
+        trigger: {
+          hour: 9,
+          minute: 20,
+          repeats: true,
+        },
+      });
+    } catch (e) {
+      console.log("Error scheduling notification:", e);
+    }
+  }
 
   return (
     <SettingsProvider>
