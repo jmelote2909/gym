@@ -108,7 +108,7 @@ export default function ActiveWorkoutScreen() {
     // 2. Clear & Noticeable Sound
     try {
       const { sound } = await Audio.Sound.createAsync(
-        { uri: 'https://docs.expo.dev/static/sounds/hello.mp3' }, // Documented stable sample
+        { uri: 'https://www.soundjay.com/button/button-1.mp3' }, // Updated stable sound URL
         { shouldPlay: true, volume: 1.0 }
       );
       await sound.playAsync();
