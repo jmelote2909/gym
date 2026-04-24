@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Modal, FlatList, Alert, ActivityIndicator, Image } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Modal, FlatList, Alert, ActivityIndicator, Image, Vibration } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '@/src/lib/supabase';
 import { Ionicons } from '@expo/vector-icons';
@@ -100,14 +100,11 @@ export default function ActiveWorkoutScreen() {
   }, [isTimerActive, timerRemaining]);
 
   async function triggerTimerEndNotification() {
-    // 1. Multiple Strong Vibrations
+    // 1. Multiple Strong Vibrations using native Vibration API
     try {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      setTimeout(() => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success), 400);
-      setTimeout(() => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success), 800);
+      Vibration.vibrate([500, 1000, 500, 1000]);
     } catch (_) {}
 
-    // 2. Clear & Noticeable Sound
     // 2. Clear & Noticeable Sound
     try {
       const { sound } = await Audio.Sound.createAsync(
@@ -222,14 +219,14 @@ export default function ActiveWorkoutScreen() {
           exerciseId: re.id_ejercicio_catalogo,
           name: (re.catalogo_ejercicios as any).nombre,
           isCardio: (re.catalogo_ejercicios as any).categoria === 'cardio',
-          sets: Array.from({ length: re.series_sugeridas || 3 }).map(() => ({
+          sets: [{
             id: Math.random().toString(),
-            weight: re.peso_sugerido?.toString() || '',
-            reps: re.repeticiones_sugeridas?.toString() || '',
+            weight: '',
+            reps: '',
             minutes: '',
             seconds: '',
             distance: ''
-          }))
+          }]
         }));
         setExerciseLogs([...exerciseLogs, ...newLogs]);
         setRoutineModalVisible(false);
@@ -242,12 +239,25 @@ export default function ActiveWorkoutScreen() {
   }
 
   async function fetchExercises() {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
     const { data } = await supabase.from('catalogo_ejercicios').select('*').order('nombre');
+    
+    // Fetch user's max weights
+    const { data: userRecords } = await supabase.from('ejercicios').select('nombre, peso').eq('id_usuario', user.id);
+    const weightMap = new Map();
+    userRecords?.forEach(record => weightMap.set(record.nombre, record.peso));
+
     if (data) {
-      setAvailableExercises(data);
-      setFilteredExercises(data);
+      const mappedData = data.map(ex => ({
+        ...ex,
+        previousWeight: weightMap.get(ex.nombre) || 0
+      }));
+      setAvailableExercises(mappedData);
+      setFilteredExercises(mappedData);
       
-      const uniqueMuscles = Array.from(new Set(data.map(item => item.musculo_principal)))
+      const uniqueMuscles = Array.from(new Set(mappedData.map(item => item.musculo_principal)))
         .filter(Boolean)
         .sort()
         .map(m => m.charAt(0).toUpperCase() + m.slice(1).toLowerCase());
@@ -769,6 +779,11 @@ export default function ActiveWorkoutScreen() {
                     <Text style={[styles.exerciseSelectMuscle, { color: colors.secondary }]}>
                       {t(item.musculo_principal)} {item.equipamiento ? `· ${item.equipamiento}` : ''}
                     </Text>
+                    {item.previousWeight > 0 && (
+                      <Text style={{ color: colors.primary, fontSize: 12, marginTop: 4, fontWeight: '700' }}>
+                        Último peso: {item.previousWeight}kg
+                      </Text>
+                    )}
                   </View>
                   <Ionicons name="add-circle-outline" size={24} color={colors.primary} />
                 </TouchableOpacity>
@@ -927,7 +942,7 @@ export default function ActiveWorkoutScreen() {
               <Ionicons name="close" size={24} color={colors.text} />
             </TouchableOpacity>
             <Ionicons name="checkmark-circle" size={60} color={colors.primary} style={{ marginBottom: 15 }} />
-            <Text style={{ color: colors.text, fontSize: 20, fontWeight: 'bold', textAlign: 'center' }}>Entrenamiento finalizado</Text>
+            <Text style={{ color: colors.text, fontSize: 20, fontWeight: 'bold', textAlign: 'center' }}>Descanso terminado</Text>
           </View>
         </View>
       </Modal>

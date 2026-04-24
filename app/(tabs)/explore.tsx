@@ -5,14 +5,11 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSettings } from '@/src/context/SettingsContext';
 
 export default function ExercisesScreen() {
-  const [modalVisible, setModalVisible] = useState(false);
-  const [newExerciseName, setNewExerciseName] = useState('');
-  const [newExerciseWeight, setNewExerciseWeight] = useState('');
-  const [isEditing, setIsEditing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedMuscle, setSelectedMuscle] = useState<string | null>(null);
   const [catalogExercises, setCatalogExercises] = useState<any[]>([]);
   const [loadingCatalog, setLoadingCatalog] = useState(true);
+  const [userWeights, setUserWeights] = useState<Map<string, number>>(new Map());
   const [muscles, setMuscles] = useState<string[]>(['Todos']);
   const { t, colors } = useSettings();
 
@@ -39,12 +36,23 @@ export default function ExercisesScreen() {
 
   async function fetchInitialCatalog() {
     setLoadingCatalog(true);
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const { data: userRecords } = await supabase.from('ejercicios').select('nombre, peso').eq('id_usuario', user.id);
+    const weightMap = new Map<string, number>();
+    userRecords?.forEach(record => weightMap.set(record.nombre, record.peso));
+    setUserWeights(weightMap);
+
     const { data, error } = await supabase
       .from('catalogo_ejercicios')
       .select('*')
       .order('nombre', { ascending: true });
 
-    if (!error) setCatalogExercises(data || []);
+    if (!error && data) {
+      const mappedData = data.map(ex => ({ ...ex, previousWeight: weightMap.get(ex.nombre) || 0 }));
+      setCatalogExercises(mappedData);
+    }
     setLoadingCatalog(false);
   }
 
@@ -64,8 +72,9 @@ export default function ExercisesScreen() {
 
     const { data, error } = await dbQuery.order('nombre', { ascending: true });
 
-    if (!error) {
-      setCatalogExercises(data || []);
+    if (!error && data) {
+      const mappedData = data.map(ex => ({ ...ex, previousWeight: userWeights.get(ex.nombre) || 0 }));
+      setCatalogExercises(mappedData);
     }
     setLoadingCatalog(false);
   }
@@ -76,43 +85,7 @@ export default function ExercisesScreen() {
     searchExercises(searchQuery, newMuscle);
   }
 
-  function adoptExercise(item: any) {
-    setNewExerciseName(item.nombre);
-    setModalVisible(true);
-    setIsEditing(false);
-  }
 
-  async function addExercise() {
-    if (!newExerciseName) {
-      Alert.alert('Incompleto', 'Por favor, añade un nombre.');
-      return;
-    }
-
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
-
-    const { error } = await supabase.from('ejercicios').insert([
-      { 
-        nombre: newExerciseName, 
-        peso: parseFloat(newExerciseWeight) || 0,
-        id_usuario: user.id 
-      }
-    ]);
-
-    if (error) {
-      Alert.alert('Error', error.message);
-    } else {
-      closeModal();
-      Alert.alert('Éxito', 'Ejercicio añadido a tu rutina.');
-    }
-  }
-
-  function closeModal() {
-    setNewExerciseName('');
-    setNewExerciseWeight('');
-    setModalVisible(false);
-    setIsEditing(false);
-  }
 
 
   return (
@@ -166,10 +139,9 @@ export default function ExercisesScreen() {
         <ScrollView contentContainerStyle={styles.listContent}>
            {catalogExercises.length > 0 ? (
               catalogExercises.map((item) => (
-                <TouchableOpacity 
+                <View
                   key={item.id} 
                   style={[styles.exerciseCard, { backgroundColor: colors.card, borderColor: colors.border }]}
-                  onPress={() => adoptExercise(item)}
                 >
                    <View style={styles.exerciseCardLeft}>
                      <View style={[styles.exerciseImageMini, { backgroundColor: colors.background }]}>
@@ -186,10 +158,17 @@ export default function ExercisesScreen() {
                        </Text>
                      </View>
                    </View>
-                   <View style={[styles.adoptIcon, { backgroundColor: colors.primary }]}>
-                     <Ionicons name="add" size={20} color={colors.background} />
-                   </View>
-                </TouchableOpacity>
+                   {item.previousWeight > 0 && (
+                     <View style={{ alignItems: 'flex-end', marginLeft: 10 }}>
+                       <Text style={{ color: colors.secondary, fontSize: 11, fontWeight: '700', textTransform: 'uppercase' }}>
+                         Último peso
+                       </Text>
+                       <Text style={{ color: colors.primary, fontSize: 16, fontWeight: '900' }}>
+                         {item.previousWeight}kg
+                       </Text>
+                     </View>
+                   )}
+                </View>
               ))
            ) : (
              <View style={styles.emptyContainer}>
@@ -202,61 +181,7 @@ export default function ExercisesScreen() {
         </ScrollView>
       )}
 
-      {/* Floating Action Button */}
-      <TouchableOpacity 
-        style={[styles.fab, { backgroundColor: colors.primary }]} 
-        onPress={() => setModalVisible(true)}
-      >
-        <Ionicons name="add" size={30} color={colors.background} />
-      </TouchableOpacity>
 
-      {/* Add Exercise Modal */}
-      <Modal
-        animationType="slide"
-        transparent={true}
-        visible={modalVisible}
-        onRequestClose={() => setModalVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <Text style={[styles.modalTitle, { color: colors.text }]}>{isEditing ? t('edit_exercise') : t('new_exercise')}</Text>
-            
-            <TextInput
-              style={[styles.input, { backgroundColor: colors.background, color: colors.text }]}
-              placeholder={t('name_hint')}
-              placeholderTextColor={colors.muted}
-              value={newExerciseName}
-              onChangeText={setNewExerciseName}
-            />
-            
-            <TextInput
-              style={[styles.input, { backgroundColor: colors.background, color: colors.text }]}
-              placeholder={`${t('weight')} (Kg)`}
-              placeholderTextColor={colors.muted}
-              keyboardType="numeric"
-              value={newExerciseWeight}
-              onChangeText={setNewExerciseWeight}
-            />
-
-
-            <View style={styles.modalButtons}>
-              <TouchableOpacity 
-                style={[styles.modalButton, styles.cancelButton, { backgroundColor: colors.background }]} 
-                onPress={() => setModalVisible(false)}
-              >
-                <Text style={[styles.cancelButtonText, { color: colors.text }]}>{t('cancel')}</Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity 
-                style={[styles.modalButton, styles.saveButton, { backgroundColor: colors.primary }]} 
-                onPress={addExercise}
-              >
-                <Text style={[styles.saveButtonText, { color: colors.background }]}>{t('save')}</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
     </View>
   );
 }

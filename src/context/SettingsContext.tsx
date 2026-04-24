@@ -173,7 +173,15 @@ const translations: Record<Language, Record<string, string>> = {
     'máquina smith': 'Máquina Smith',
     'barra ez': 'Barra EZ',
     'barra trap': 'Barra Trap',
-    'peso corporal': 'Peso corporal'
+    'peso corporal': 'Peso corporal',
+    privacy_title: 'Privacidad',
+    privacy_msg: 'Tu cuenta es privada. Solo los amigos que aceptes pueden ver tu actividad de entrenamiento.',
+    privacy_notice: 'Tus datos están protegidos y se utilizan exclusivamente para mejorar tu experiencia en GymBros.',
+    view_privacy: 'Ver Política de Privacidad',
+    privacy_policy_content: 'En GymBros respetamos tu privacidad. Tus datos de entrenamiento y perfil solo son visibles para ti y para los amigos que hayas aceptado explícitamente en la plataforma.',
+    rest_finished: 'Descanso terminado',
+    previous: 'Anterior',
+    last_weight: 'Último peso'
   },
   en: {
     dashboard: 'Home',
@@ -302,7 +310,15 @@ const translations: Record<Language, Record<string, string>> = {
     'máquina smith': 'Smith Machine',
     'barra ez': 'EZ Bar',
     'barra trap': 'Trap Bar',
-    'peso corporal': 'Bodyweight'
+    'peso corporal': 'Bodyweight',
+    privacy_title: 'Privacy',
+    privacy_msg: 'Your account is private. Only friends you accept can see your training activity.',
+    privacy_notice: 'Your data is protected and used exclusively to enhance your experience in GymBros.',
+    view_privacy: 'View Privacy Policy',
+    privacy_policy_content: 'In GymBros we respect your privacy. Your training and profile data are only visible to you and the friends you have explicitly accepted on the platform.',
+    rest_finished: 'Rest finished',
+    previous: 'Previous',
+    last_weight: 'Last weight'
   }
 };
 

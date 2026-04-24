@@ -18,11 +18,10 @@ interface Props {
   visible: boolean;
   onClose: () => void;
   achievement: Achievement | null;
-  onToggleUnlock: (achievement: Achievement) => Promise<void>;
   colors: any;
 }
 
-export default function AchievementDetailModal({ visible, onClose, achievement, onToggleUnlock, colors }: Props) {
+export default function AchievementDetailModal({ visible, onClose, achievement, colors }: Props) {
   if (!achievement) return null;
 
   return (
@@ -43,18 +42,9 @@ export default function AchievementDetailModal({ visible, onClose, achievement, 
 
           <Text style={[styles.description, { color: colors.secondary }]}>{achievement.descripcion}</Text>
 
-          <View style={{ marginTop: 16, flexDirection: 'row', justifyContent: 'space-between' }}>
-            <TouchableOpacity style={[styles.btn, { backgroundColor: colors.border }]} onPress={onClose}>
-              <Text style={{ color: colors.text }}>Cerrar</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.btn, { backgroundColor: achievement.unlocked ? colors.background : colors.primary }]}
-              onPress={() => achievement && onToggleUnlock(achievement)}
-            >
-              <Text style={{ color: achievement.unlocked ? colors.primary : colors.background, fontWeight: '700' }}>
-                {achievement.unlocked ? 'Marcar como bloqueado' : 'Marcar como completado'}
-              </Text>
+          <View style={{ marginTop: 16, flexDirection: 'row', justifyContent: 'center' }}>
+            <TouchableOpacity style={[styles.btn, { backgroundColor: colors.border, paddingHorizontal: 30 }]} onPress={onClose}>
+              <Text style={{ color: colors.text, fontWeight: '700' }}>Cerrar</Text>
             </TouchableOpacity>
           </View>
         </View>

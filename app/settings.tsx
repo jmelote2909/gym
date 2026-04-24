@@ -56,9 +56,28 @@ export default function SettingsScreen() {
           <Ionicons name="information-circle-outline" size={24} color={colors.muted} />
           <Text style={[styles.infoText, { color: colors.secondary }]}>
             {language === 'es' 
-              ? 'Algunos cambios pueden requerir reiniciar la aplicación para aplicarse por completo.'
-              : 'Some changes may require restarting the application to take full effect.'}
+               ? 'Algunos cambios pueden requerir reiniciar la aplicación para aplicarse por completo.'
+               : 'Some changes may require restarting the application to take full effect.'}
           </Text>
+        </View>
+
+        {/* Privacy Section */}
+        <Text style={[styles.sectionTitle, { color: colors.primary }]}>{t('privacy_title')}</Text>
+        <View style={[styles.optionsContainer, { backgroundColor: colors.card, padding: 20 }]}>
+           <Text style={{ color: colors.text, fontSize: 16, fontWeight: '700', marginBottom: 10 }}>{t('privacy_title')}</Text>
+           <Text style={{ color: colors.secondary, fontSize: 14, lineHeight: 20, marginBottom: 20 }}>
+             {t('privacy_msg')}
+           </Text>
+           <TouchableOpacity 
+             style={{ backgroundColor: colors.primary, padding: 15, borderRadius: 12, alignItems: 'center' }}
+             onPress={() => {
+                import('react-native').then(({ Alert }) => {
+                  Alert.alert(t('privacy_title'), t('privacy_policy_content'));
+                });
+             }}
+           >
+             <Text style={{ color: colors.background, fontWeight: '800' }}>{t('view_privacy')}</Text>
+           </TouchableOpacity>
         </View>
 
       </ScrollView>

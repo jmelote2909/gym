@@ -151,35 +151,7 @@ export default function AchievementsScreen() {
     setSelectedAchievement(null);
   };
 
-  async function toggleUnlock(achievement: Achievement) {
-    setLoading(true);
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      setLoading(false);
-      return;
-    }
 
-    try {
-      if (achievement.unlocked) {
-        // eliminar registro
-        await supabase
-          .from('logros_usuario')
-          .delete()
-          .eq('id_usuario', user.id)
-          .eq('id_logro', achievement.id);
-      } else {
-        // insertar registro
-        await supabase
-          .from('logros_usuario')
-          .insert([{ id_usuario: user.id, id_logro: achievement.id, desbloqueado_el: new Date().toISOString() }]);
-      }
-    } catch (err) {
-      console.warn('toggleUnlock error', err);
-    } finally {
-      await fetchAchievements();
-      setModalVisible(false);
-    }
-  }
 
   const renderAchievement = (achievement: Achievement, index: number) => {
     const isLocked = !achievement.unlocked;
@@ -378,7 +350,6 @@ export default function AchievementsScreen() {
         visible={modalVisible}
         achievement={selectedAchievement}
         onClose={closeModal}
-        onToggleUnlock={toggleUnlock}
         colors={colors}
       />
     </SafeAreaView>

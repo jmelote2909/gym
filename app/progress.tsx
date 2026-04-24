@@ -24,6 +24,7 @@ export default function ProgressScreen() {
   const [avgWeekly, setAvgWeekly] = useState(0);
   const [loadingChart, setLoadingChart] = useState(false);
   const [volumeHistory, setVolumeHistory] = useState<{ date: string; value: number }[]>([]);
+  const [dailyMaxHistory, setDailyMaxHistory] = useState<{ date: string; value: number }[]>([]);
   const [muscleDist, setMuscleDist] = useState<{ muscle: string; series: number }[]>([]);
 
   useEffect(() => {
@@ -58,12 +59,45 @@ export default function ProgressScreen() {
       fourWeeksAgo.setDate(fourWeeksAgo.getDate() - 28);
       const recent = workouts.filter(w => new Date(w.creado_el) >= fourWeeksAgo);
       setAvgWeekly(Math.round((recent.length / 4) * 10) / 10);
-    }
 
-    // Muscle distribution
-    const { data: muscleStats } = await supabase.rpc('get_muscle_stats', { p_user_id: user.id });
-    if (muscleStats) {
-      setMuscleDist(muscleStats);
+      // --- Peso diario (Max weight per session) ---
+      const { data: maxWeights } = await supabase
+        .from('series_entrenamiento')
+        .select('peso, id_sesion')
+        .in('id_sesion', workouts.map(w => w.id));
+      
+      const sessionMaxMap = new Map();
+      maxWeights?.forEach(s => {
+        const current = sessionMaxMap.get(s.id_sesion) || 0;
+        if (s.peso > current) sessionMaxMap.set(s.id_sesion, s.peso);
+      });
+
+      const pesoHistory = workouts.slice(-10).map(w => ({
+        date: new Date(w.creado_el).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit' }),
+        value: sessionMaxMap.get(w.id) || 0
+      }));
+      setDailyMaxHistory(pesoHistory);
+
+      // --- Muscle distribution (Exercise count) ---
+      const { data: seriesWithMuscle } = await supabase
+        .from('series_entrenamiento')
+        .select('id_ejercicio_catalogo, catalogo_ejercicios(musculo_principal)')
+        .in('id_sesion', workouts.map(w => w.id));
+      
+      const muscleExerciseMap = new Map();
+      seriesWithMuscle?.forEach(s => {
+        const muscle = s.catalogo_ejercicios?.musculo_principal;
+        if (!muscle) return;
+        if (!muscleExerciseMap.has(muscle)) muscleExerciseMap.set(muscle, new Set());
+        muscleExerciseMap.get(muscle).add(s.id_ejercicio_catalogo);
+      });
+
+      const muscleDistData = Array.from(muscleExerciseMap.entries()).map(([muscle, exercises]) => ({
+        muscle,
+        series: exercises.size 
+      })).sort((a, b) => b.series - a.series);
+
+      setMuscleDist(muscleDistData);
     }
 
     setLoading(false);
@@ -166,6 +200,14 @@ export default function ProgressScreen() {
             <ProgressChart
               data={volumeHistory}
               title="Carga Total por Sesión"
+              unit="kg"
+              color={colors.primary}
+            />
+            
+            <Text style={[styles.sectionTitle, { color: colors.text, marginTop: 20 }]}>Peso Máximo por Sesión (10 ses.)</Text>
+            <ProgressChart
+              data={dailyMaxHistory}
+              title="Récord de Carga en Sesión"
               unit="kg"
               color={colors.primary}
             />

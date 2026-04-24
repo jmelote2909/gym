@@ -58,13 +58,13 @@ export default function ProfileScreen() {
       setTotalSessions(sessionCount);
       
       // Calculate Level (Square root based scaling)
-      // Level 1: 0 sessions, Level 2: 2 sessions, Level 3: 6 sessions, Level 4: 12 sessions...
-      const currentLevel = Math.floor(Math.sqrt(sessionCount * 2)) + 1;
+      // Nivel 1: 0, Nivel 2: 4, Nivel 3: 9... (L = sqrt(S) + 1)
+      const currentLevel = Math.floor(Math.sqrt(sessionCount)) + 1;
       setLevel(currentLevel);
       
       // Calculate progress to next level
-      const nextLevelSessions = Math.pow(currentLevel, 2) / 2;
-      const prevLevelSessions = Math.pow(currentLevel - 1, 2) / 2;
+      const nextLevelSessions = Math.pow(currentLevel, 2);
+      const prevLevelSessions = Math.pow(currentLevel - 1, 2);
       const progress = (sessionCount - prevLevelSessions) / (nextLevelSessions - prevLevelSessions);
       setXpProgress(Math.min(Math.max(progress, 0), 1));
     }
@@ -221,7 +221,7 @@ export default function ProfileScreen() {
                   <View style={[styles.levelBarFill, { width: `${xpProgress * 100}%`, backgroundColor: colors.primary }]} />
                </View>
                <Text style={[styles.levelInfo, { color: colors.muted }]}>
-                 {level < 50 ? `${Math.ceil((Math.pow(level, 2) / 2) - totalSessions)} entrenos más para Nivel ${level + 1}` : 'Nivel Máximo (Leyenda)'}
+                 {level < 200 ? `${Math.ceil(Math.pow(level, 2) - totalSessions)} entrenos más para Nivel ${level + 1}` : 'Nivel Máximo (Leyenda)'}
                </Text>
             </View>
           )}

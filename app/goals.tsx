@@ -67,7 +67,9 @@ export default function GoalsScreen() {
       valor_actual: 0 // Will be synced later or manually
     }]);
 
-    if (!error) {
+    if (error) {
+      Alert.alert('Error', error.message);
+    } else {
       setModalVisible(false);
       setNewGoalValue('');
       setNewGoalExercise('');

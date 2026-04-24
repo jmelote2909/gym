@@ -287,7 +287,7 @@ export default function RoutinesScreen() {
                 <View style={styles.exInfo}>
                   <Text style={[styles.exName, { color: colors.text }]}>{ex.nombre}</Text>
                   <Text style={[styles.exDetails, { color: colors.secondary }]}>
-                    {ex.series_sugeridas} series · {ex.repeticiones_sugeridas} reps · {ex.peso_sugerido}kg
+                    {t(ex.musculo_principal)}
                   </Text>
                 </View>
                 <TouchableOpacity onPress={() => removeExerciseFromRoutine(ex.id)}>
