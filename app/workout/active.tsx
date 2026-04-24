@@ -107,8 +107,14 @@ export default function ActiveWorkoutScreen() {
 
     // 2. Clear & Noticeable Sound
     try {
+      await Audio.setAudioModeAsync({
+        playsInSilentModeIOS: true,
+        staysActiveInBackground: true,
+        shouldDuckAndroid: true,
+      });
+
       const { sound } = await Audio.Sound.createAsync(
-        { uri: 'https://www.soundjay.com/button/button-1.mp3' }, // Updated stable sound URL
+        { uri: 'https://www.soundjay.com/buttons/beep-07a.mp3' }, 
         { shouldPlay: true, volume: 1.0 }
       );
       await sound.playAsync();
