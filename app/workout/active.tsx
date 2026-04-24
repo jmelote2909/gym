@@ -10,7 +10,8 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useSettings } from '@/src/context/SettingsContext';
 import * as Haptics from 'expo-haptics';
 import { saveWorkoutOffline } from '@/src/lib/offlineSync';
-import Animated, { FadeInDown } from 'react-native-reanimated';
+import Animated, { FadeInDown, useSharedValue, useAnimatedStyle } from 'react-native-reanimated';
+import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import { Audio } from 'expo-av';
 
 interface Set {
@@ -56,6 +57,34 @@ export default function ActiveWorkoutScreen() {
   const [timerPreset, setTimerPreset] = useState(60);
   const [autoStartTimer, setAutoStartTimer] = useState(false);
 
+  const [isTimerSettingsVisible, setIsTimerSettingsVisible] = useState(false);
+  const [isTimerFinishedVisible, setIsTimerFinishedVisible] = useState(false);
+  const [customTimerMinutes, setCustomTimerMinutes] = useState('');
+  const [customTimerSeconds, setCustomTimerSeconds] = useState('');
+
+  const translateX = useSharedValue(0);
+  const translateY = useSharedValue(0);
+  const context = useSharedValue({ x: 0, y: 0 });
+
+  const panGesture = Gesture.Pan()
+    .minDistance(5)
+    .onStart(() => {
+      context.value = { x: translateX.value, y: translateY.value };
+    })
+    .onUpdate((event) => {
+      translateX.value = context.value.x + event.translationX;
+      translateY.value = context.value.y + event.translationY;
+    });
+
+  const animatedTimerStyle = useAnimatedStyle(() => {
+    return {
+      transform: [
+        { translateX: translateX.value },
+        { translateY: translateY.value },
+      ],
+    };
+  });
+
   useEffect(() => {
     let interval: NodeJS.Timeout;
     if (isTimerActive && timerRemaining > 0) {
@@ -65,6 +94,7 @@ export default function ActiveWorkoutScreen() {
     } else if (timerRemaining === 0 && isTimerActive) {
       setIsTimerActive(false);
       triggerTimerEndNotification();
+      setIsTimerFinishedVisible(true);
     }
     return () => clearInterval(interval);
   }, [isTimerActive, timerRemaining]);
@@ -483,7 +513,7 @@ export default function ActiveWorkoutScreen() {
   }
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
+    <GestureHandlerRootView style={[styles.container, { backgroundColor: colors.background }]}>
       <LinearGradient colors={[colors.card, colors.background]} style={styles.header}>
         <View style={styles.headerTop}>
           <TouchableOpacity onPress={() => router.back()}>
@@ -800,52 +830,109 @@ export default function ActiveWorkoutScreen() {
         </View>
       </Modal>
 
-      {/* Floating Rest Timer */}
-      {(isTimerActive || timerRemaining > 0) && (
-        <Animated.View 
-          entering={FadeInDown.springify()} 
-          style={[styles.floatingTimer, { backgroundColor: colors.card, borderColor: colors.primary }]}
-        >
-          <View style={styles.timerHeader}>
-             <Ionicons name="timer-outline" size={16} color={colors.primary} />
-             <Text style={[styles.timerTitle, { color: colors.secondary }]}>DESCANSO</Text>
-             <TouchableOpacity onPress={stopTimer}>
-                <Ionicons name="close-circle" size={20} color={colors.muted} />
-             </TouchableOpacity>
-          </View>
-          <Text style={[styles.timerValue, { color: colors.text }]}>
-            {Math.floor(timerRemaining / 60)}:{(timerRemaining % 60).toString().padStart(2, '0')}
-          </Text>
-          <View style={styles.timerPresets}>
-            {[30, 60, 90, 120].map(s => (
-              <TouchableOpacity 
-                key={s} 
-                onPress={() => startTimer(s)}
-                style={[styles.presetBtn, timerPreset === s && { backgroundColor: colors.primary + '20' }]}
-              >
-                <Text style={[styles.presetText, { color: colors.primary }]}>{s}s</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
+      {/* Draggable Timer */}
+      <GestureDetector gesture={panGesture}>
+        <Animated.View style={[styles.timerToggle, { backgroundColor: isTimerActive ? colors.card : colors.primary, borderColor: colors.primary, borderWidth: isTimerActive ? 2 : 0 }, animatedTimerStyle]}>
+          <TouchableOpacity 
+            style={{flex: 1, alignItems: 'center', justifyContent: 'center', width: '100%', height: '100%'}} 
+            onPress={() => {
+              if (isTimerActive) {
+                stopTimer();
+              } else {
+                setIsTimerSettingsVisible(true);
+              }
+            }}
+          >
+            {isTimerActive ? (
+              <Text style={{color: colors.primary, fontWeight: '900', fontSize: 16}}>
+                {Math.floor(timerRemaining / 60)}:{(timerRemaining % 60).toString().padStart(2, '0')}
+              </Text>
+            ) : (
+              <Ionicons name="stopwatch" size={30} color={colors.background} />
+            )}
+          </TouchableOpacity>
         </Animated.View>
-      )}
+      </GestureDetector>
 
-      {/* Timer Toggle Button */}
-      {!isTimerActive && timerRemaining === 0 && (
-        <TouchableOpacity 
-          style={[styles.timerToggle, { backgroundColor: colors.primary }]}
-          onPress={() => startTimer(timerPreset)}
-        >
-          <Ionicons name="stopwatch" size={30} color={colors.background} />
-          {autoStartTimer && (
-             <View style={[styles.autoStartToggle, { backgroundColor: colors.background, borderColor: colors.primary }]}>
-                <View style={[styles.toggleDot, { backgroundColor: colors.primary }]} />
-             </View>
-          )}
-        </TouchableOpacity>
-      )}
+      {/* Timer Settings Modal */}
+      <Modal visible={isTimerSettingsVisible} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: colors.card, height: 'auto', paddingBottom: 40 }]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>Temporizador</Text>
+              <TouchableOpacity onPress={() => setIsTimerSettingsVisible(false)}>
+                <Ionicons name="close" size={24} color={colors.text} />
+              </TouchableOpacity>
+            </View>
+            
+            <Text style={[styles.notesLabel, { color: colors.secondary }]}>Opciones Rápidas</Text>
+            <View style={{flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 20}}>
+              {[{l: '30s', v: 30}, {l: '1 min', v: 60}, {l: '1:30 min', v: 90}, {l: '2 min', v: 120}, {l: '2:30 min', v: 150}].map(opt => (
+                <TouchableOpacity 
+                  key={opt.v}
+                  style={[styles.presetBtn, { backgroundColor: colors.primary + '20', borderWidth: 1, borderColor: colors.primary, paddingHorizontal: 15, paddingVertical: 10, borderRadius: 12 }]}
+                  onPress={() => {
+                    startTimer(opt.v);
+                    setIsTimerSettingsVisible(false);
+                  }}
+                >
+                  <Text style={[styles.presetText, { color: colors.primary, fontSize: 14 }]}>{opt.l}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
 
-    </View>
+            <Text style={[styles.notesLabel, { color: colors.secondary }]}>Personalizado</Text>
+            <View style={{flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 20}}>
+              <TextInput
+                style={[styles.setInput, { backgroundColor: colors.background, color: colors.text, flex: 1, fontSize: 18 }]}
+                keyboardType="numeric"
+                placeholder="Min"
+                placeholderTextColor={colors.muted}
+                value={customTimerMinutes}
+                onChangeText={setCustomTimerMinutes}
+              />
+              <Text style={{color: colors.text, fontSize: 20, fontWeight: 'bold'}}>:</Text>
+              <TextInput
+                style={[styles.setInput, { backgroundColor: colors.background, color: colors.text, flex: 1, fontSize: 18 }]}
+                keyboardType="numeric"
+                placeholder="Seg"
+                placeholderTextColor={colors.muted}
+                value={customTimerSeconds}
+                onChangeText={setCustomTimerSeconds}
+              />
+            </View>
+
+            <TouchableOpacity 
+              style={[styles.saveBtn, { backgroundColor: colors.primary }]}
+              onPress={() => {
+                const m = parseInt(customTimerMinutes) || 0;
+                const s = parseInt(customTimerSeconds) || 0;
+                if (m > 0 || s > 0) {
+                  startTimer(m * 60 + s);
+                  setIsTimerSettingsVisible(false);
+                }
+              }}
+            >
+              <Text style={[styles.saveBtnText, { color: colors.background }]}>Iniciar</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Timer Finished Modal */}
+      <Modal visible={isTimerFinishedVisible} animationType="fade" transparent>
+        <View style={[styles.modalOverlay, { justifyContent: 'center', alignItems: 'center' }]}>
+          <View style={{ backgroundColor: colors.card, padding: 30, borderRadius: 20, alignItems: 'center', width: '80%', borderWidth: 2, borderColor: colors.primary }}>
+            <TouchableOpacity style={{ position: 'absolute', top: 10, right: 10 }} onPress={() => setIsTimerFinishedVisible(false)}>
+              <Ionicons name="close" size={24} color={colors.text} />
+            </TouchableOpacity>
+            <Ionicons name="checkmark-circle" size={60} color={colors.primary} style={{ marginBottom: 15 }} />
+            <Text style={{ color: colors.text, fontSize: 20, fontWeight: 'bold', textAlign: 'center' }}>Entrenamiento finalizado</Text>
+          </View>
+        </View>
+      </Modal>
+
+    </GestureHandlerRootView>
   );
 }
 
