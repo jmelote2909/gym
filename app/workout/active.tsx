@@ -13,6 +13,15 @@ import { saveWorkoutOffline } from '@/src/lib/offlineSync';
 import Animated, { FadeInDown, useSharedValue, useAnimatedStyle } from 'react-native-reanimated';
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import { Audio } from 'expo-av';
+import * as Notifications from 'expo-notifications';
+
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: false,
+  }),
+});
 
 interface Set {
   id: string;
@@ -105,27 +114,18 @@ export default function ActiveWorkoutScreen() {
       Vibration.vibrate([500, 1000, 500, 1000]);
     } catch (_) {}
 
-    // 2. Clear & Noticeable Sound
+    // 2. Notification with Sound (System Default)
     try {
-      await Audio.setAudioModeAsync({
-        playsInSilentModeIOS: true,
-        staysActiveInBackground: true,
-        shouldDuckAndroid: true,
-      });
-
-      const { sound } = await Audio.Sound.createAsync(
-        { uri: 'https://www.soundjay.com/buttons/beep-07a.mp3' }, 
-        { shouldPlay: true, volume: 1.0 }
-      );
-      await sound.playAsync();
-      // Clean up sound after playing
-      sound.setOnPlaybackStatusUpdate((status: any) => {
-        if (status.didJustFinish) {
-          sound.unloadAsync();
-        }
+      await Notifications.scheduleNotificationAsync({
+        content: {
+          title: "GymBros",
+          body: "¡Descanso terminado!",
+          sound: true,
+        },
+        trigger: null,
       });
     } catch (err) {
-      console.warn('Error playing timer sound', err);
+      console.warn('Error sending notification', err);
     }
   }
 
@@ -147,6 +147,8 @@ export default function ActiveWorkoutScreen() {
     if (sessionId) {
       loadSession(sessionId);
     }
+    // Request notification permissions
+    Notifications.requestPermissionsAsync();
   }, [sessionId]);
 
   async function fetchRoutines() {
