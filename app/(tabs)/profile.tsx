@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, Alert, TextInput, ScrollView, ActivityIndicator, Image } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Alert, TextInput, ScrollView, ActivityIndicator, Image } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '@/src/lib/supabase';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system/legacy';
@@ -22,6 +23,9 @@ export default function ProfileScreen() {
   const [loading, setLoading] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [totalSessions, setTotalSessions] = useState(0);
+  const [level, setLevel] = useState(1);
+  const [xpProgress, setXpProgress] = useState(0);
 
   useEffect(() => {
     fetchProfile();
@@ -43,6 +47,26 @@ export default function ProfileScreen() {
         setEstatura(profile.estatura ? profile.estatura.toString() : '');
         setAvatarUrl(profile.url_avatar || null);
       }
+
+      // Fetch sessions for leveling
+      const { count } = await supabase
+        .from('sesiones_entrenamiento')
+        .select('*', { count: 'exact', head: true })
+        .eq('id_usuario', user.id);
+      
+      const sessionCount = count || 0;
+      setTotalSessions(sessionCount);
+      
+      // Calculate Level (Square root based scaling)
+      // Level 1: 0 sessions, Level 2: 2 sessions, Level 3: 6 sessions, Level 4: 12 sessions...
+      const currentLevel = Math.floor(Math.sqrt(sessionCount * 2)) + 1;
+      setLevel(currentLevel);
+      
+      // Calculate progress to next level
+      const nextLevelSessions = Math.pow(currentLevel, 2) / 2;
+      const prevLevelSessions = Math.pow(currentLevel - 1, 2) / 2;
+      const progress = (sessionCount - prevLevelSessions) / (nextLevelSessions - prevLevelSessions);
+      setXpProgress(Math.min(Math.max(progress, 0), 1));
     }
   }
 
@@ -184,6 +208,23 @@ export default function ProfileScreen() {
               <Text style={[styles.changePhotoText, { color: colors.primary }]}>{uploading ? 'Subiendo...' : t('change_photo')}</Text>
             </TouchableOpacity>
           )}
+
+          {!isEditing && (
+            <View style={[styles.levelCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+               <View style={styles.levelHeader}>
+                  <View style={[styles.levelBadge, { backgroundColor: colors.primary }]}>
+                     <Text style={[styles.levelText, { color: colors.background }]}>NIVEL {level}</Text>
+                  </View>
+                  <Text style={[styles.sessionsCount, { color: colors.secondary }]}>{totalSessions} Sesiones</Text>
+               </View>
+               <View style={[styles.levelBarContainer, { backgroundColor: colors.background }]}>
+                  <View style={[styles.levelBarFill, { width: `${xpProgress * 100}%`, backgroundColor: colors.primary }]} />
+               </View>
+               <Text style={[styles.levelInfo, { color: colors.muted }]}>
+                 {level < 50 ? `${Math.ceil((Math.pow(level, 2) / 2) - totalSessions)} entrenos más para Nivel ${level + 1}` : 'Nivel Máximo (Leyenda)'}
+               </Text>
+            </View>
+          )}
         </View>
 
         {isEditing ? (
@@ -254,6 +295,12 @@ export default function ProfileScreen() {
               <TouchableOpacity style={styles.menuItem} onPress={() => router.push('/notifications' as any)}>
                 <Ionicons name="notifications-outline" size={24} color={colors.secondary} />
                 <Text style={[styles.menuText, { color: colors.text }]}>{t('notifications')}</Text>
+                <Ionicons name="chevron-forward" size={20} color={colors.muted} />
+              </TouchableOpacity>
+
+              <TouchableOpacity style={styles.menuItem} onPress={() => router.push('/goals' as any)}>
+                <Ionicons name="flag-outline" size={24} color={colors.secondary} />
+                <Text style={[styles.menuText, { color: colors.text }]}>Mis Objetivos</Text>
                 <Ionicons name="chevron-forward" size={20} color={colors.muted} />
               </TouchableOpacity>
             </View>
@@ -414,5 +461,46 @@ const styles = StyleSheet.create({
     fontSize: 14,
     marginTop: 10,
     textTransform: 'uppercase',
+  },
+  levelCard: {
+    width: '100%',
+    padding: 20,
+    borderRadius: 20,
+    marginTop: 25,
+    borderWidth: 1,
+  },
+  levelHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  levelBadge: {
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  levelText: {
+    fontSize: 12,
+    fontWeight: '900',
+  },
+  sessionsCount: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  levelBarContainer: {
+    height: 8,
+    borderRadius: 4,
+    overflow: 'hidden',
+    marginBottom: 8,
+  },
+  levelBarFill: {
+    height: '100%',
+    borderRadius: 4,
+  },
+  levelInfo: {
+    fontSize: 11,
+    fontWeight: '600',
+    textAlign: 'center',
   }
 });

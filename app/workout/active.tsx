@@ -1,12 +1,17 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Modal, FlatList, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Modal, FlatList, Alert, ActivityIndicator, Image } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '@/src/lib/supabase';
 import { Ionicons } from '@expo/vector-icons';
 import { calculateStreakAndLives } from '@/src/lib/streakLogic';
 import { format } from 'date-fns';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useSettings } from '@/src/context/SettingsContext';
+import * as Haptics from 'expo-haptics';
+import { saveWorkoutOffline } from '@/src/lib/offlineSync';
+import Animated, { FadeInDown } from 'react-native-reanimated';
+import { Audio } from 'expo-av';
 
 interface Set {
   id: string;
@@ -28,9 +33,12 @@ interface ExerciseLog {
 
 export default function ActiveWorkoutScreen() {
   const router = useRouter();
+  const { sessionId } = useLocalSearchParams<{ sessionId?: string }>();
   const [exerciseLogs, setExerciseLogs] = useState<ExerciseLog[]>([]);
   const [availableExercises, setAvailableExercises] = useState<any[]>([]);
   const [isModalVisible, setIsModalVisible] = useState(false);
+  const [routineModalVisible, setRoutineModalVisible] = useState(false);
+  const [routines, setRoutines] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [exerciseSearchQuery, setExerciseSearchQuery] = useState('');
   const [filteredExercises, setFilteredExercises] = useState<any[]>([]);
@@ -42,9 +50,166 @@ export default function ActiveWorkoutScreen() {
   const [energyLevel, setEnergyLevel] = useState(3);
   const { t, colors } = useSettings();
 
+  // Rest Timer State
+  const [timerRemaining, setTimerRemaining] = useState(0);
+  const [isTimerActive, setIsTimerActive] = useState(false);
+  const [timerPreset, setTimerPreset] = useState(60);
+  const [autoStartTimer, setAutoStartTimer] = useState(false);
+
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (isTimerActive && timerRemaining > 0) {
+      interval = setInterval(() => {
+        setTimerRemaining(prev => prev - 1);
+      }, 1000);
+    } else if (timerRemaining === 0 && isTimerActive) {
+      setIsTimerActive(false);
+      triggerTimerEndNotification();
+    }
+    return () => clearInterval(interval);
+  }, [isTimerActive, timerRemaining]);
+
+  async function triggerTimerEndNotification() {
+    // 1. Multiple Strong Vibrations
+    try {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      setTimeout(() => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success), 400);
+      setTimeout(() => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success), 800);
+    } catch (_) {}
+
+    // 2. Clear & Noticeable Sound
+    // 2. Clear & Noticeable Sound
+    try {
+      const { sound } = await Audio.Sound.createAsync(
+        { uri: 'https://docs.expo.dev/static/sounds/hello.mp3' }, // Documented stable sample
+        { shouldPlay: true, volume: 1.0 }
+      );
+      await sound.playAsync();
+      // Clean up sound after playing
+      sound.setOnPlaybackStatusUpdate((status: any) => {
+        if (status.didJustFinish) {
+          sound.unloadAsync();
+        }
+      });
+    } catch (err) {
+      console.warn('Error playing timer sound', err);
+    }
+  }
+
+  const startTimer = (seconds: number) => {
+    setTimerRemaining(seconds);
+    setIsTimerActive(true);
+    setTimerPreset(seconds);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+  };
+
+  const stopTimer = () => {
+    setIsTimerActive(false);
+    setTimerRemaining(0);
+  };
+
   useEffect(() => {
     fetchExercises();
-  }, []);
+    fetchRoutines();
+    if (sessionId) {
+      loadSession(sessionId);
+    }
+  }, [sessionId]);
+
+  async function fetchRoutines() {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    const { data } = await supabase.from('rutinas').select('*').eq('id_usuario', user.id);
+    setRoutines(data || []);
+  }
+
+  async function loadSession(id: string) {
+    setLoading(true);
+    try {
+      const { data: session } = await supabase
+        .from('sesiones_entrenamiento')
+        .select('*')
+        .eq('id', id)
+        .single();
+      
+      if (session) {
+        setWorkoutNote(session.nota || '');
+        setMoodSelected(session.estado_animo);
+        setEnergyLevel(session.nivel_energia || 3);
+
+        const { data: series } = await supabase
+          .from('series_entrenamiento')
+          .select('*, catalogo_ejercicios(nombre, musculo_principal, categoria)')
+          .eq('id_sesion', id)
+          .order('creado_el');
+
+        if (series) {
+          // Group series by exercise
+          const logsMap = new Map<string, ExerciseLog>();
+          series.forEach(s => {
+            const exName = (s.catalogo_ejercicios as any).nombre;
+            const exId = s.id_ejercicio_catalogo;
+            if (!logsMap.has(exId)) {
+              logsMap.set(exId, {
+                id: Math.random().toString(36).substr(2, 9),
+                exerciseId: exId,
+                name: exName,
+                isCardio: (s.catalogo_ejercicios as any).categoria === 'cardio',
+                sets: []
+              });
+            }
+            logsMap.get(exId)?.sets.push({
+              id: s.id,
+              weight: s.peso?.toString() || '',
+              reps: s.repeticiones?.toString() || '',
+              minutes: s.tiempo_minutos?.toString() || '',
+              seconds: s.tiempo_segundos?.toString() || '',
+              distance: s.distancia_km?.toString() || ''
+            });
+          });
+          setExerciseLogs(Array.from(logsMap.values()));
+        }
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function loadRoutine(routineId: string) {
+    setLoading(true);
+    try {
+      const { data: rutEx } = await supabase
+        .from('rutinas_ejercicios')
+        .select('*, catalogo_ejercicios(nombre, musculo_principal, categoria)')
+        .eq('id_rutina', routineId)
+        .order('orden');
+      
+      if (rutEx) {
+        const newLogs: ExerciseLog[] = rutEx.map(re => ({
+          id: Math.random().toString(36).substr(2, 9),
+          exerciseId: re.id_ejercicio_catalogo,
+          name: (re.catalogo_ejercicios as any).nombre,
+          isCardio: (re.catalogo_ejercicios as any).categoria === 'cardio',
+          sets: Array.from({ length: re.series_sugeridas || 3 }).map(() => ({
+            id: Math.random().toString(),
+            weight: re.peso_sugerido?.toString() || '',
+            reps: re.repeticiones_sugeridas?.toString() || '',
+            minutes: '',
+            seconds: '',
+            distance: ''
+          }))
+        }));
+        setExerciseLogs([...exerciseLogs, ...newLogs]);
+        setRoutineModalVisible(false);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  }
 
   async function fetchExercises() {
     const { data } = await supabase.from('catalogo_ejercicios').select('*').order('nombre');
@@ -72,10 +237,14 @@ export default function ActiveWorkoutScreen() {
   }, [exerciseSearchQuery, availableExercises, selectedMuscle]);
 
   async function addExerciseToWorkout(exercise: any) {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
     const { data: userEx } = await supabase
       .from('ejercicios')
       .select('peso')
       .eq('nombre', exercise.nombre)
+      .eq('id_usuario', user.id)
       .limit(1)
       .single();
 
@@ -111,6 +280,9 @@ export default function ActiveWorkoutScreen() {
       distance: prevSet?.distance || ''
     });
     setExerciseLogs(newLogs);
+    if (autoStartTimer) {
+      startTimer(timerPreset);
+    }
   }
 
   function updateSet(exerciseIndex: number, setIndex: number, field: keyof Set, value: string) {
@@ -134,22 +306,35 @@ export default function ActiveWorkoutScreen() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    const { data: workout, error: wError } = await supabase
-      .from('entrenamientos')
-      .insert([{ id_usuario: user.id, nombre: t('todays_workout') }])
-      .select()
-      .single();
+    const { data: session, error: sError } = sessionId 
+      ? await supabase.from('sesiones_entrenamiento').update({
+          nota: workoutNote.trim(),
+          estado_animo: moodSelected,
+          nivel_energia: energyLevel
+        }).eq('id', sessionId).select().single()
+      : await supabase.from('sesiones_entrenamiento').insert([{
+          id_usuario: user.id,
+          nombre: t('todays_workout'),
+          nota: workoutNote.trim(),
+          estado_animo: moodSelected,
+          nivel_energia: energyLevel
+        }]).select().single();
 
-    if (wError) {
-      Alert.alert('Error', wError.message);
+    if (sError) {
+      Alert.alert('Error', sError.message);
       setLoading(false);
       return;
     }
 
+    if (sessionId) {
+      // Clear old rows for this session before inserting new ones
+      await supabase.from('series_entrenamiento').delete().eq('id_sesion', sessionId);
+    }
+
     const setsFormatted = exerciseLogs.flatMap(log => 
       log.sets.map(set => ({
-        id_entrenamiento: workout.id,
-        id_ejercicio: log.exerciseId,
+        id_sesion: session.id,
+        id_ejercicio_catalogo: log.exerciseId,
         peso: log.isCardio ? 0 : (parseFloat(set.weight) || 0),
         repeticiones: log.isCardio ? 0 : (parseInt(set.reps) || 0),
         tiempo_minutos: log.isCardio ? (parseInt(set.minutes || '0') || 0) : null,
@@ -158,12 +343,12 @@ export default function ActiveWorkoutScreen() {
       }))
     );
 
-    const { error: sError } = await supabase.from('series_entrenamiento').insert(setsFormatted);
-
-    if (sError) {
-      Alert.alert('Error al guardar series', sError.message);
-      setLoading(false);
-      return;
+    const { error: seriesErr } = await supabase.from('series_entrenamiento').insert(setsFormatted);
+    
+    if (seriesErr) {
+       Alert.alert('Error al guardar series', seriesErr.message);
+       setLoading(false);
+       return;
     }
 
     // 3. Update records (records reside in the 'ejercicios' personal table)
@@ -238,17 +423,59 @@ export default function ActiveWorkoutScreen() {
         } catch (_) {} // Non-blocking
       }
 
-      // 6. Check and unlock achievements
-      try {
-        await supabase.rpc('verificar_logros_usuario', { usuario_id: user.id });
-      } catch (_) {} // Non-blocking, don't fail the workout if this fails
-
       setLoading(false);
       Alert.alert(t('success'), t('workout_saved_subtitle'), [
         { text: 'OK', onPress: () => router.replace('/(tabs)') }
       ]);
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
+      
+      // OFFLINE FALLBACK
+      // If we are here, something went wrong, possibly connection.
+      // Let's try to save offline.
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+         const offlineData = {
+            workout: {
+                id_usuario: user.id,
+                nombre: t('todays_workout'),
+                nota: workoutNote.trim(),
+                estado_animo: moodSelected,
+                nivel_energia: energyLevel
+            },
+            series: exerciseLogs.flatMap(log => 
+                log.sets.map(set => ({
+                  id_ejercicio_catalogo: log.exerciseId,
+                  peso: log.isCardio ? 0 : (parseFloat(set.weight) || 0),
+                  repeticiones: log.isCardio ? 0 : (parseInt(set.reps) || 0),
+                  tiempo_minutos: log.isCardio ? (parseInt(set.minutes || '0') || 0) : null,
+                  tiempo_segundos: log.isCardio ? (parseInt(set.seconds || '0') || 0) : null,
+                  distancia_km: log.isCardio ? (parseFloat(set.distance || '0') || null) : null,
+                }))
+            ),
+            records: exerciseLogs.map(log => {
+                const maxWeight = Math.max(...log.sets.map(s => parseFloat(s.weight) || 0));
+                return {
+                    name: log.name,
+                    userId: user.id,
+                    data: { id_usuario: user.id, nombre: log.name, peso: maxWeight }
+                }
+            }),
+            notes: workoutNote.trim() || moodSelected ? {
+                nota: workoutNote.trim() || '',
+                estado_animo: moodSelected,
+                nivel_energia: energyLevel,
+            } : null,
+         };
+
+         const saved = await saveWorkoutOffline(offlineData);
+         if (saved) {
+             Alert.alert("Trabajo guardado offline", "No hay conexión, pero tu entrenamiento se ha guardado localmente. Se sincronizará automáticamente cuando vuelvas a tener internet.");
+             router.replace('/(tabs)');
+             return;
+         }
+      }
+
       Alert.alert(t('workout_saved'), t('workout_saved_error'));
       router.replace('/(tabs)');
     }
@@ -262,12 +489,28 @@ export default function ActiveWorkoutScreen() {
           <TouchableOpacity onPress={() => router.back()}>
             <Ionicons name="close" size={28} color={colors.text} />
           </TouchableOpacity>
-          <Text style={[styles.title, { color: colors.text }]}>{t('training')}</Text>
+          <Text style={[styles.title, { color: colors.text }]}>{sessionId ? 'Editar Entrenamiento' : t('training')}</Text>
           <TouchableOpacity onPress={finishWorkout} disabled={loading}>
             {loading ? <ActivityIndicator color={colors.primary} /> : <Text style={[styles.finishText, { color: colors.primary }]}>{t('finish').toUpperCase()}</Text>}
           </TouchableOpacity>
         </View>
       </LinearGradient>
+
+      <View style={styles.topActions}>
+        <TouchableOpacity 
+          style={[styles.routineCardHeader, { backgroundColor: colors.card, borderColor: colors.border }]}
+          onPress={() => setRoutineModalVisible(true)}
+        >
+          <View style={[styles.routineIconCircle, { backgroundColor: colors.primary + '15' }]}>
+            <Ionicons name="list" size={24} color={colors.primary} />
+          </View>
+          <View style={styles.routineBtnInfo}>
+            <Text style={[styles.routineBtnTitle, { color: colors.text }]}>Cargar Rutina</Text>
+            <Text style={[styles.routineBtnSub, { color: colors.secondary }]}>Añade ejercicios de una rutina guardada</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color={colors.muted} />
+        </TouchableOpacity>
+      </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
         {exerciseLogs.map((log, exIdx) => (
@@ -484,8 +727,20 @@ export default function ActiveWorkoutScreen() {
               keyExtractor={(item) => item.id}
               renderItem={({ item }) => (
                 <TouchableOpacity style={[styles.exerciseSelectItem, { borderBottomColor: colors.border }]} onPress={() => addExerciseToWorkout(item)}>
-                  <Text style={[styles.exerciseSelectName, { color: colors.text }]}>{item.nombre}</Text>
-                  <Text style={[styles.exerciseSelectMuscle, { color: colors.secondary }]}>{t(item.musculo_principal)}</Text>
+                  <View style={[styles.exerciseImageMini, { backgroundColor: colors.background }]}>
+                    {item.imagen_url ? (
+                      <Image source={{ uri: item.imagen_url }} style={styles.miniExerciseImg} />
+                    ) : (
+                      <Ionicons name="barbell-outline" size={20} color={colors.primary} />
+                    )}
+                  </View>
+                  <View style={styles.exerciseSelectInfo}>
+                    <Text style={[styles.exerciseSelectName, { color: colors.text }]}>{item.nombre}</Text>
+                    <Text style={[styles.exerciseSelectMuscle, { color: colors.secondary }]}>
+                      {t(item.musculo_principal)} {item.equipamiento ? `· ${item.equipamiento}` : ''}
+                    </Text>
+                  </View>
+                  <Ionicons name="add-circle-outline" size={24} color={colors.primary} />
                 </TouchableOpacity>
               )}
               ListEmptyComponent={<Text style={[styles.emptyText, { color: colors.muted }]}>{t('no_results_found')}</Text>}
@@ -493,6 +748,103 @@ export default function ActiveWorkoutScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* Routine Selection Modal */}
+      <Modal visible={routineModalVisible} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: colors.card, height: '60%' }]}>
+            <View style={styles.modalHeader}>
+              <View>
+                <Text style={[styles.modalTitle, { color: colors.text }]}>Tus Rutinas</Text>
+                <Text style={[styles.modalSub, { color: colors.secondary }]}>Selecciona una para cargar sus ejercicios</Text>
+              </View>
+              <TouchableOpacity onPress={() => setRoutineModalVisible(false)} style={[styles.closeBtn, { backgroundColor: colors.background }]}>
+                <Ionicons name="close" size={24} color={colors.text} />
+              </TouchableOpacity>
+            </View>
+            <FlatList
+              data={routines}
+              keyExtractor={item => item.id}
+              contentContainerStyle={{ paddingBottom: 30 }}
+              renderItem={({ item }) => (
+                <TouchableOpacity 
+                   style={[styles.routineSelectItem, { backgroundColor: colors.background, borderColor: colors.border }]}
+                   onPress={() => loadRoutine(item.id)}
+                >
+                  <View style={[styles.routineSelectIcon, { backgroundColor: colors.primary + '15' }]}>
+                    <Ionicons name="barbell" size={22} color={colors.primary} />
+                  </View>
+                  <View style={styles.routineSelectInfo}>
+                    <Text style={[styles.routineItemName, { color: colors.text }]}>{item.nombre}</Text>
+                    <Text style={[styles.routineItemDesc, { color: colors.secondary }]} numberOfLines={1}>
+                      {item.descripcion || 'Sin descripción'}
+                    </Text>
+                  </View>
+                  <Ionicons name="add-circle" size={26} color={colors.primary} />
+                </TouchableOpacity>
+              )}
+              ListEmptyComponent={
+                <View style={styles.emptyContainer}>
+                  <Ionicons name="clipboard-outline" size={60} color={colors.muted} />
+                  <Text style={[styles.emptyText, { color: colors.muted, marginTop: 15 }]}>No tienes rutinas guardadas</Text>
+                  <TouchableOpacity 
+                    style={[styles.createRoutineBtn, { backgroundColor: colors.primary }]}
+                    onPress={() => { setRoutineModalVisible(false); router.push('/routines' as any); }}
+                  >
+                    <Text style={[styles.createRoutineText, { color: colors.background }]}>CREAR RUTINA</Text>
+                  </TouchableOpacity>
+                </View>
+              }
+            />
+          </View>
+        </View>
+      </Modal>
+
+      {/* Floating Rest Timer */}
+      {(isTimerActive || timerRemaining > 0) && (
+        <Animated.View 
+          entering={FadeInDown.springify()} 
+          style={[styles.floatingTimer, { backgroundColor: colors.card, borderColor: colors.primary }]}
+        >
+          <View style={styles.timerHeader}>
+             <Ionicons name="timer-outline" size={16} color={colors.primary} />
+             <Text style={[styles.timerTitle, { color: colors.secondary }]}>DESCANSO</Text>
+             <TouchableOpacity onPress={stopTimer}>
+                <Ionicons name="close-circle" size={20} color={colors.muted} />
+             </TouchableOpacity>
+          </View>
+          <Text style={[styles.timerValue, { color: colors.text }]}>
+            {Math.floor(timerRemaining / 60)}:{(timerRemaining % 60).toString().padStart(2, '0')}
+          </Text>
+          <View style={styles.timerPresets}>
+            {[30, 60, 90, 120].map(s => (
+              <TouchableOpacity 
+                key={s} 
+                onPress={() => startTimer(s)}
+                style={[styles.presetBtn, timerPreset === s && { backgroundColor: colors.primary + '20' }]}
+              >
+                <Text style={[styles.presetText, { color: colors.primary }]}>{s}s</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </Animated.View>
+      )}
+
+      {/* Timer Toggle Button */}
+      {!isTimerActive && timerRemaining === 0 && (
+        <TouchableOpacity 
+          style={[styles.timerToggle, { backgroundColor: colors.primary }]}
+          onPress={() => startTimer(timerPreset)}
+        >
+          <Ionicons name="stopwatch" size={30} color={colors.background} />
+          {autoStartTimer && (
+             <View style={[styles.autoStartToggle, { backgroundColor: colors.background, borderColor: colors.primary }]}>
+                <View style={[styles.toggleDot, { backgroundColor: colors.primary }]} />
+             </View>
+          )}
+        </TouchableOpacity>
+      )}
+
     </View>
   );
 }
@@ -636,8 +988,14 @@ const styles = StyleSheet.create({
   },
   exerciseSelectItem: {
     padding: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     borderBottomWidth: 1,
     borderBottomColor: '#262626',
+  },
+  exerciseSelectInfo: {
+    flex: 1,
   },
   exerciseSelectName: {
     color: '#fff',
@@ -752,6 +1110,189 @@ const styles = StyleSheet.create({
   saveBtnText: {
     fontSize: 16,
     fontWeight: '900',
+  },
+  editButtonText: {
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  floatingTimer: {
+    position: 'absolute',
+    bottom: 100,
+    right: 20,
+    width: 150,
+    padding: 15,
+    borderRadius: 20,
+    borderWidth: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
+    elevation: 10,
+    alignItems: 'center',
+  },
+  timerHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    marginBottom: 5,
+    width: '100%',
+    justifyContent: 'space-between',
+  },
+  timerTitle: {
+    fontSize: 10,
+    fontWeight: '900',
+    letterSpacing: 1,
+  },
+  timerValue: {
+    fontSize: 32,
+    fontWeight: '900',
+    marginVertical: 5,
+  },
+  timerPresets: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 5,
+    justifyContent: 'center',
+    marginTop: 5,
+  },
+  presetBtn: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  presetText: {
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  timerToggle: {
+    position: 'absolute',
+    bottom: 110,
+    right: 25,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    alignItems: 'center',
+    justifyContent: 'center',
+    elevation: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 5,
+  },
+  topActions: {
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+  },
+  routineCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    borderRadius: 20,
+    borderWidth: 1,
+    gap: 15,
+  },
+  routineIconCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  routineBtnInfo: {
+    flex: 1,
+  },
+  routineBtnTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  routineBtnSub: {
+    fontSize: 11,
+    marginTop: 2,
+    fontWeight: '600',
+  },
+  modalSub: {
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: 4,
+  },
+  closeBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  routineSelectItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    borderRadius: 18,
+    borderWidth: 1,
+    marginBottom: 12,
+    gap: 15,
+  },
+  routineSelectIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  routineSelectInfo: {
+    flex: 1,
+  },
+  routineItemName: {
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  routineItemDesc: {
+    fontSize: 12,
+    marginTop: 2,
+  },
+  createRoutineBtn: {
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 12,
+    marginTop: 20,
+  },
+  createRoutineText: {
+    fontWeight: '900',
+    fontSize: 13,
+    letterSpacing: 0.5,
+  },
+  exerciseImageMini: {
+    position: 'absolute',
+    top: -5,
+    right: -5,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: '#000',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#333',
+  },
+  toggleDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  exerciseImageMini: {
+    width: 44,
+    height: 44,
+    borderRadius: 10,
+    marginRight: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  miniExerciseImg: {
+    width: '100%',
+    height: '100%',
   },
   skipBtn: {
     alignItems: 'center',

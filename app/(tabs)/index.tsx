@@ -7,8 +7,11 @@ import { es, enUS } from 'date-fns/locale';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
-import { Dimensions, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View, Modal, Image } from 'react-native';
+import { Dimensions, ScrollView, StyleSheet, Text, TouchableOpacity, View, Modal, Image } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { syncPendingWorkouts, hasPendingWorkouts } from '@/src/lib/offlineSync';
+import { requestNotificationPermissions, scheduleTrainingReminder } from '@/src/lib/notifications';
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -63,10 +66,12 @@ export default function Dashboard() {
   const [weight, setWeight] = useState('--');
   const [height, setHeight] = useState('--');
   const [hasTrainedToday, setHasTrainedToday] = useState(false);
+  const [todaySessionId, setTodaySessionId] = useState<string | null>(null);
   const [esAdmin, setEsAdmin] = useState(false);
   const [friendActivities, setFriendActivities] = useState<any[]>([]);
   const [hasNewAlert, setHasNewAlert] = useState(false);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [hasPending, setHasPending] = useState(false);
   const { t, colors, language } = useSettings();
   const dateLocale = language === 'es' ? es : enUS;
   const [currentBannerMessage, setCurrentBannerMessage] = useState<string | null>(null);
@@ -79,6 +84,22 @@ export default function Dashboard() {
     transform: [{ translateY: bannerTranslateY.value }],
   }));
 
+  useEffect(() => {
+    initializeApp();
+  }, []);
+
+  async function initializeApp() {
+    const pending = await hasPendingWorkouts();
+    setHasPending(pending);
+    if (pending) {
+       const synced = await syncPendingWorkouts();
+       if (synced) setHasPending(false);
+    }
+
+    // We'll schedule notifications after fetching the user profile to use their name
+  }
+  }
+
   useFocusEffect(
     useCallback(() => {
       let isMounted = true;
@@ -88,7 +109,6 @@ export default function Dashboard() {
       async function getProfileAndActivity() {
         const { data: { user } } = await supabase.auth.getUser();
         if (user && isMounted) {
-          // 1. Fetch user profile
           const { data, error } = await supabase
             .from('perfiles')
             .select('*, url_avatar')
@@ -104,7 +124,8 @@ export default function Dashboard() {
               data.dias_vida_gastada || []
             );
 
-            setUserName(data.nombre_usuario || user.email?.split('@')[0] || 'user');
+            const displayName = data.nombre_usuario || user.email?.split('@')[0] || 'user';
+            setUserName(displayName);
             setStreak(sync.streak);
             setLives(sync.lives);
             setWeight(data.peso ? `${data.peso}kg` : '--');
@@ -112,6 +133,27 @@ export default function Dashboard() {
             setHasTrainedToday(sync.todayTrained);
             setEsAdmin(!!data.es_admin);
             setAvatarUrl(data.url_avatar || null);
+
+            // Schedule personalized notifications
+            try {
+              const granted = await requestNotificationPermissions();
+              if (granted) {
+                await scheduleTrainingReminder(displayName);
+              }
+            } catch (e) {
+              console.log('Notifications not available');
+            }
+
+            if (sync.todayTrained) {
+              const todayStr = format(new Date(), 'yyyy-MM-dd');
+              const { data: session } = await supabase
+                .from('sesiones_entrenamiento')
+                .select('id')
+                .eq('id_usuario', user.id)
+                .gte('creado_el', `${todayStr}T00:00:00Z`)
+                .single();
+              if (session) setTodaySessionId(session.id);
+            }
 
             if (sync.streak !== data.racha || sync.lives !== data.vidas) {
               await supabase.from('perfiles').update({
@@ -123,10 +165,8 @@ export default function Dashboard() {
             }
           }
 
-          // 2. Fetch Friend Activity
           await fetchFriendActivity(user.id);
 
-          // 3. Setup Realtime Subscription
           channel = supabase
             .channel('friend-activity')
             .on(
@@ -134,7 +174,6 @@ export default function Dashboard() {
               { event: 'UPDATE', schema: 'public', table: 'perfiles' },
               async (payload) => {
                 if (isMounted) {
-                  // Check if the updated user is a friend
                   const { data: isFriend } = await supabase
                     .from('amistades')
                     .select('id')
@@ -150,7 +189,6 @@ export default function Dashboard() {
             )
             .subscribe();
 
-          // 4. Setup Alert Subscription
           alertChannel = supabase
             .channel('global-alerts')
             .on(
@@ -172,7 +210,6 @@ export default function Dashboard() {
             )
             .subscribe();
 
-          // 5. Check for unread alerts
           const { data: latestAlert } = await supabase
             .from('alertas_globales')
             .select('id, mensaje')
@@ -185,7 +222,6 @@ export default function Dashboard() {
             if (lastSeenId !== latestAlert.id.toString()) {
               setHasNewAlert(true);
               
-              // Also show banner if it's new (user just opened app and hasn't seen it)
               setCurrentBannerMessage(latestAlert.mensaje);
               bannerTranslateY.value = withTiming(0, { duration: 500 });
               bannerOpacity.value = withTiming(1, { duration: 500 });
@@ -212,7 +248,7 @@ export default function Dashboard() {
 
           const { data: profiles } = await supabase
             .from('perfiles')
-            .select('id, nombre_usuario, racha, ultima_fecha_entreno')
+            .select('id, nombre_usuario, racha, ultima_fecha_entreno, url_avatar')
             .in('id', friendIds)
             .eq('ultima_fecha_entreno', todayStr);
 
@@ -240,7 +276,6 @@ export default function Dashboard() {
   };
 
   async function openAlert() {
-    // Mark latest as seen
     const { data } = await supabase
       .from('alertas_globales')
       .select('id')
@@ -265,7 +300,6 @@ export default function Dashboard() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-      {/* Floating Banner */}
       <Animated.View style={[styles.bannerContainer, bannerStyle]}>
         <LinearGradient 
           colors={['rgba(38, 38, 38, 0.95)', 'rgba(0, 0, 0, 0.95)']} 
@@ -284,13 +318,18 @@ export default function Dashboard() {
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
 
-        {/* Header */}
         <View style={[styles.header, { borderBottomColor: colors.border }]}>
           <View>
             <Text style={[styles.greeting, { color: colors.secondary }]}>{t('dashboard')}</Text>
             <Text style={[styles.name, { color: colors.text }]}>{userName || 'Guerrero'}</Text>
           </View>
           <View style={styles.headerActions}>
+            {hasPending && (
+              <View style={[styles.pendingBadge, { backgroundColor: colors.primary }]}>
+                <Ionicons name="cloud-upload" size={16} color={colors.background} />
+                <Text style={[styles.pendingText, { color: colors.background }]}>SYNC</Text>
+              </View>
+            )}
             <TouchableOpacity 
               style={[styles.profileButton, { marginRight: 10 }]} 
               onPress={openAlert}
@@ -317,7 +356,6 @@ export default function Dashboard() {
           </View>
         </View>
 
-        {/* Stats Summary */}
         <View style={styles.statsContainer}>
           <View style={[styles.statsRow, { backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1, flex: 1 }]}>
           <View style={styles.statItem}>
@@ -338,7 +376,6 @@ export default function Dashboard() {
         </View>
         </View>
 
-        {/* Action Button */}
         <View style={styles.actionSection}>
           <Text style={[styles.dateLabel, { color: colors.primary }]}>{capitalizedDate}</Text>
           <TouchableOpacity
@@ -362,9 +399,20 @@ export default function Dashboard() {
               </Text>
             </LinearGradient>
           </TouchableOpacity>
+
+          {hasTrainedToday && todaySessionId && (
+            <TouchableOpacity 
+              style={[styles.editButton, { borderColor: colors.primary }]}
+              onPress={() => router.push({ pathname: '/workout/active', params: { sessionId: todaySessionId } })}
+            >
+              <Ionicons name="create-outline" size={20} color={colors.primary} />
+              <Text style={[styles.editButtonText, { color: colors.primary }]}>
+                EDITAR ENTRENAMIENTO DE HOY
+              </Text>
+            </TouchableOpacity>
+          )}
         </View>
 
-        {/* Recent Activity Section */}
         <View style={styles.sectionHeader}>
           <Text style={[styles.sectionTitle, { color: colors.text }]}>{t('friend_activity')}</Text>
         </View>
@@ -396,7 +444,6 @@ export default function Dashboard() {
           </View>
         )}
 
-        {/* Quick Access to New Features */}
         <View style={styles.sectionHeader}>
           <Text style={[styles.sectionTitle, { color: colors.text }]}>Herramientas</Text>
         </View>
@@ -717,5 +764,20 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '600',
     textAlign: 'center',
+  },
+  editButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginTop: -20,
+    gap: 8,
+  },
+  editButtonText: {
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 0.5,
   },
 });

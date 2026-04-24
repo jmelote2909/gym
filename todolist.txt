@@ -2,7 +2,7 @@ futuro proximo:
 -- funcion de admin
 -- mensajes de alerta del admin
 -- notificaciones generales
--? recordatorios de antiguo peso
+-- recordatorios de antiguo peso
 -- avatar
 -- ajustes de la aplicacion (idioma, tema, etc)
 - ver perfil de otros usuarios (solo si es amigo)

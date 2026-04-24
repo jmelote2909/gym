@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, TextInput, Modal, ActivityIndicator, Alert, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, TextInput, Modal, ActivityIndicator, Alert, ScrollView, Image } from 'react-native';
 import { supabase } from '@/src/lib/supabase';
 import { Ionicons } from '@expo/vector-icons';
 import { useSettings } from '@/src/context/SettingsContext';
@@ -42,7 +42,6 @@ export default function ExercisesScreen() {
     const { data, error } = await supabase
       .from('catalogo_ejercicios')
       .select('*')
-      .limit(50)
       .order('nombre', { ascending: true });
 
     if (!error) setCatalogExercises(data || []);
@@ -63,7 +62,7 @@ export default function ExercisesScreen() {
       dbQuery = dbQuery.ilike('musculo_principal', `%${muscle}%`);
     }
 
-    const { data, error } = await dbQuery.limit(50).order('nombre', { ascending: true });
+    const { data, error } = await dbQuery.order('nombre', { ascending: true });
 
     if (!error) {
       setCatalogExercises(data || []);
@@ -166,23 +165,32 @@ export default function ExercisesScreen() {
       ) : (
         <ScrollView contentContainerStyle={styles.listContent}>
            {catalogExercises.length > 0 ? (
-             catalogExercises.map((item) => (
-               <TouchableOpacity 
-                 key={item.id} 
-                 style={[styles.exerciseCard, { backgroundColor: colors.card, borderColor: colors.border }]}
-                 onPress={() => adoptExercise(item)}
-               >
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.exerciseName, { color: colors.text }]}>{item.nombre}</Text>
-                    <Text style={[styles.exerciseDetails, { color: colors.secondary }]}>
-                      {t(item.musculo_principal)} • {t(item.equipamiento)}
-                    </Text>
-                  </View>
-                  <View style={[styles.adoptIcon, { backgroundColor: colors.primary }]}>
-                    <Ionicons name="add" size={20} color={colors.background} />
-                  </View>
-               </TouchableOpacity>
-             ))
+              catalogExercises.map((item) => (
+                <TouchableOpacity 
+                  key={item.id} 
+                  style={[styles.exerciseCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+                  onPress={() => adoptExercise(item)}
+                >
+                   <View style={styles.exerciseCardLeft}>
+                     <View style={[styles.exerciseImageMini, { backgroundColor: colors.background }]}>
+                       {item.imagen_url ? (
+                         <Image source={{ uri: item.imagen_url }} style={styles.miniExerciseImg} />
+                       ) : (
+                         <Ionicons name="barbell-outline" size={20} color={colors.primary} />
+                       )}
+                     </View>
+                     <View style={{ flex: 1 }}>
+                       <Text style={[styles.exerciseName, { color: colors.text }]}>{item.nombre}</Text>
+                       <Text style={[styles.exerciseDetails, { color: colors.secondary }]}>
+                         {t(item.musculo_principal)} • {t(item.equipamiento)}
+                       </Text>
+                     </View>
+                   </View>
+                   <View style={[styles.adoptIcon, { backgroundColor: colors.primary }]}>
+                     <Ionicons name="add" size={20} color={colors.background} />
+                   </View>
+                </TouchableOpacity>
+              ))
            ) : (
              <View style={styles.emptyContainer}>
                <Ionicons name="search-outline" size={60} color={colors.muted} />
@@ -306,7 +314,7 @@ const styles = StyleSheet.create({
     paddingBottom: 100,
   },
   exerciseCard: {
-    padding: 20,
+    padding: 15,
     borderRadius: 15,
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -314,6 +322,24 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     marginHorizontal: 20,
     borderWidth: 1,
+  },
+  exerciseCardLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  exerciseImageMini: {
+    width: 48,
+    height: 48,
+    borderRadius: 12,
+    marginRight: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  miniExerciseImg: {
+    width: '100%',
+    height: '100%',
   },
   exerciseName: {
     fontSize: 18,

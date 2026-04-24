@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, SafeAreaView,
-  TouchableOpacity, TextInput, Modal, FlatList, Alert, ActivityIndicator
+  View, Text, StyleSheet, ScrollView,
+  TouchableOpacity, TextInput, Modal, FlatList, Alert, ActivityIndicator, Image
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '@/src/lib/supabase';
 import { Ionicons } from '@expo/vector-icons';
 import { useSettings } from '@/src/context/SettingsContext';
@@ -330,15 +331,26 @@ export default function RoutinesScreen() {
               data={filteredCatalog}
               keyExtractor={item => item.id}
               renderItem={({ item }) => (
-                <TouchableOpacity
-                  style={[styles.catalogItem, { borderBottomColor: colors.border }]}
-                  onPress={() => addExerciseToRoutine(item)}
-                >
-                  <Text style={[styles.catalogName, { color: colors.text }]}>{item.nombre}</Text>
-                  <Text style={[styles.catalogMuscle, { color: colors.secondary }]}>
-                    {item.categoria ? `${item.categoria} • ` : ''}{item.musculo_principal}
-                  </Text>
-                </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.catalogItem, { borderBottomColor: colors.border }]}
+                    onPress={() => addExerciseToRoutine(item)}
+                  >
+                    <View style={styles.catalogItemContent}>
+                      <View style={[styles.exerciseImageMini, { backgroundColor: colors.background }]}>
+                        {item.imagen_url ? (
+                          <Image source={{ uri: item.imagen_url }} style={styles.miniExerciseImg} />
+                        ) : (
+                          <Ionicons name="barbell-outline" size={20} color={colors.primary} />
+                        )}
+                      </View>
+                      <View style={styles.catalogInfo}>
+                        <Text style={[styles.catalogName, { color: colors.text }]}>{item.nombre}</Text>
+                        <Text style={[styles.catalogMuscle, { color: colors.secondary }]}>
+                          {item.categoria ? `${item.categoria} • ` : ''}{item.musculo_principal}
+                        </Text>
+                      </View>
+                    </View>
+                  </TouchableOpacity>
               )}
             />
           </View>
@@ -394,7 +406,19 @@ const styles = StyleSheet.create({
   catalogHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
   searchBox: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, height: 44, gap: 10, marginBottom: 16 },
   searchInput: { flex: 1, fontSize: 15 },
-  catalogItem: { paddingVertical: 16, borderBottomWidth: 1 },
+  catalogItem: { paddingVertical: 12, borderBottomWidth: 1 },
+  catalogItemContent: { flexDirection: 'row', alignItems: 'center' },
+  exerciseImageMini: {
+    width: 40,
+    height: 40,
+    borderRadius: 8,
+    marginRight: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  miniExerciseImg: { width: '100%', height: '100%' },
+  catalogInfo: { flex: 1 },
   catalogName: { fontSize: 16, fontWeight: '700' },
   catalogMuscle: { fontSize: 12, marginTop: 3 },
 });

@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, SafeAreaView,
+  View, Text, StyleSheet, ScrollView,
   TouchableOpacity, TextInput, Modal, Alert, ActivityIndicator
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '@/src/lib/supabase';
 import { Ionicons } from '@expo/vector-icons';
 import { useSettings } from '@/src/context/SettingsContext';
@@ -22,6 +23,8 @@ export default function ProgressScreen() {
   const [totalWorkouts, setTotalWorkouts] = useState(0);
   const [avgWeekly, setAvgWeekly] = useState(0);
   const [loadingChart, setLoadingChart] = useState(false);
+  const [volumeHistory, setVolumeHistory] = useState<{ date: string; value: number }[]>([]);
+  const [muscleDist, setMuscleDist] = useState<{ muscle: string; series: number }[]>([]);
 
   useEffect(() => {
     fetchStats();
@@ -33,27 +36,36 @@ export default function ProgressScreen() {
     if (!user) return;
 
     const { data: workouts } = await supabase
-      .from('entrenamientos')
-      .select('id, creado_el')
-      .eq('id_usuario', user.id);
+      .from('sesiones_entrenamiento')
+      .select('id, creado_el, volumen_total')
+      .eq('id_usuario', user.id)
+      .order('creado_el', { ascending: true });
 
-    const { data: series } = await supabase
-      .from('series_entrenamiento')
-      .select('peso, repeticiones, id_entrenamiento')
-      .in('id_entrenamiento', workouts?.map(w => w.id) || []);
+    if (workouts) {
+      const vol = workouts.reduce((acc, w) => acc + (w.volumen_total || 0), 0);
+      setTotalVolume(vol);
+      setTotalWorkouts(workouts.length);
 
-    const vol = series?.reduce((acc, s) => acc + (s.peso * s.repeticiones), 0) || 0;
-    setTotalVolume(vol);
-    setTotalWorkouts(workouts?.length || 0);
+      // Volume over time (last 10 sessions)
+      const last10 = workouts.slice(-10).map(w => ({
+        date: new Date(w.creado_el).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit' }),
+        value: Math.round(w.volumen_total || 0)
+      }));
+      setVolumeHistory(last10);
 
-    // Avg workouts per week (last 4 weeks)
-    const last4w = workouts?.filter(w => {
-      const wDate = new Date(w.creado_el);
+      // Avg weekly for last 4 weeks
       const fourWeeksAgo = new Date();
       fourWeeksAgo.setDate(fourWeeksAgo.getDate() - 28);
-      return wDate >= fourWeeksAgo;
-    });
-    setAvgWeekly(Math.round((last4w?.length || 0) / 4 * 10) / 10);
+      const recent = workouts.filter(w => new Date(w.creado_el) >= fourWeeksAgo);
+      setAvgWeekly(Math.round((recent.length / 4) * 10) / 10);
+    }
+
+    // Muscle distribution
+    const { data: muscleStats } = await supabase.rpc('get_muscle_stats', { p_user_id: user.id });
+    if (muscleStats) {
+      setMuscleDist(muscleStats);
+    }
+
     setLoading(false);
   }
 
@@ -65,7 +77,13 @@ export default function ProgressScreen() {
       .select('nombre, peso')
       .eq('id_usuario', user.id)
       .order('peso', { ascending: false });
-    setExercises(data || []);
+    
+    // Sort and map manually if needed, or just use naming convention
+    const mapped = data?.map(d => ({
+       nombre: d.nombre,
+       peso: d.peso
+    })) || [];
+    setExercises(mapped);
   }
 
   async function fetchExerciseHistory(exerciseName: string) {
@@ -75,7 +93,7 @@ export default function ProgressScreen() {
     if (!user) return;
 
     const { data: workouts } = await supabase
-      .from('entrenamientos')
+      .from('sesiones_entrenamiento')
       .select('id, creado_el')
       .eq('id_usuario', user.id)
       .order('creado_el', { ascending: true });
@@ -88,8 +106,8 @@ export default function ProgressScreen() {
 
     const { data: series } = await supabase
       .from('series_entrenamiento')
-      .select('peso, repeticiones, id_entrenamiento, catalogo_ejercicios(nombre)')
-      .in('id_entrenamiento', workouts.map(w => w.id));
+      .select('peso, repeticiones, id_sesion, catalogo_ejercicios(nombre)')
+      .in('id_sesion', workouts.map(w => w.id));
 
     const filtered = series?.filter(s => 
       (s.catalogo_ejercicios as any)?.nombre === exerciseName
@@ -98,7 +116,7 @@ export default function ProgressScreen() {
     // Group by workout date and take max weight
     const byDate = new Map<string, number>();
     filtered.forEach(s => {
-      const workout = workouts.find(w => w.id === s.id_entrenamiento);
+      const workout = workouts.find(w => w.id === s.id_sesion);
       if (!workout) return;
       const date = new Date(workout.creado_el).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit' });
       const current = byDate.get(date) || 0;
@@ -127,28 +145,55 @@ export default function ProgressScreen() {
       ) : (
         <ScrollView contentContainerStyle={styles.scrollContent}>
           {/* Summary Stats */}
-          <Animated.View entering={FadeInDown.delay(0).springify()} style={styles.statsRow}>
+          <Animated.View entering={FadeInDown.springify()} style={styles.statsRow}>
             <View style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-              <Ionicons name="barbell" size={24} color={colors.primary} />
-              <Text style={[styles.statValue, { color: colors.primary }]}>
-                {totalVolume >= 1000 ? `${(totalVolume / 1000).toFixed(1)}t` : `${Math.round(totalVolume)}kg`}
-              </Text>
-              <Text style={[styles.statLabel, { color: colors.secondary }]}>Volumen total</Text>
-            </View>
-            <View style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-              <Ionicons name="checkmark-circle" size={24} color={colors.primary} />
               <Text style={[styles.statValue, { color: colors.primary }]}>{totalWorkouts}</Text>
               <Text style={[styles.statLabel, { color: colors.secondary }]}>Sesiones</Text>
             </View>
             <View style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-              <Ionicons name="calendar" size={24} color={colors.primary} />
+              <Text style={[styles.statValue, { color: colors.primary }]}>{totalVolume.toLocaleString()}kg</Text>
+              <Text style={[styles.statLabel, { color: colors.secondary }]}>Volumen Total</Text>
+            </View>
+            <View style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
               <Text style={[styles.statValue, { color: colors.primary }]}>{avgWeekly}</Text>
-              <Text style={[styles.statLabel, { color: colors.secondary }]}>/ semana</Text>
+              <Text style={[styles.statLabel, { color: colors.secondary }]}>Media/Semana</Text>
             </View>
           </Animated.View>
 
-          {/* Exercise selector */}
+          {/* Volume Chart */}
           <Animated.View entering={FadeInDown.delay(100).springify()}>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>Volumen de Entrenamiento (10 ses.)</Text>
+            <ProgressChart
+              data={volumeHistory}
+              title="Carga Total por Sesión"
+              unit="kg"
+              color={colors.primary}
+            />
+          </Animated.View>
+
+          {/* Muscle distribution */}
+          {muscleDist.length > 0 && (
+            <Animated.View entering={FadeInDown.delay(150).springify()} style={styles.muscleSection}>
+               <Text style={[styles.sectionTitle, { color: colors.text }]}>Distribución por Músculo</Text>
+               <View style={[styles.muscleCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                  {muscleDist.slice(0, 5).map((m, i) => {
+                    const maxSeries = Math.max(...muscleDist.map(md => md.series));
+                    return (
+                      <View key={m.muscle} style={styles.muscleRow}>
+                        <Text style={[styles.muscleLabel, { color: colors.secondary }]}>{t(m.muscle)}</Text>
+                        <View style={styles.barContainer}>
+                          <View style={[styles.barFill, { width: `${(m.series / maxSeries) * 100}%`, backgroundColor: colors.primary }]} />
+                        </View>
+                        <Text style={[styles.muscleCount, { color: colors.text }]}>{m.series}</Text>
+                      </View>
+                    );
+                  })}
+               </View>
+            </Animated.View>
+          )}
+
+          {/* Exercise selector */}
+          <Animated.View entering={FadeInDown.delay(200).springify()}>
             <Text style={[styles.sectionTitle, { color: colors.text }]}>Evolución por ejercicio</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.exChips}>
               {exercises.slice(0, 15).map(ex => (
@@ -236,4 +281,11 @@ const styles = StyleSheet.create({
   rankText: { fontWeight: '900', fontSize: 12 },
   recordName: { flex: 1, fontSize: 15, fontWeight: '700' },
   recordWeight: { fontSize: 17, fontWeight: '900' },
+  muscleSection: { marginBottom: 24 },
+  muscleCard: { padding: 20, borderRadius: 20, borderWidth: 1, gap: 15 },
+  muscleRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  muscleLabel: { width: 80, fontSize: 12, fontWeight: '700' },
+  barContainer: { flex: 1, height: 8, backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 4, overflow: 'hidden' },
+  barFill: { height: '100%', borderRadius: 4 },
+  muscleCount: { width: 25, fontSize: 12, fontWeight: '800', textAlign: 'right' },
 });
